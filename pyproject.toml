@@ -1,0 +1,91 @@
+[project]
+name = "quantfolio"
+version = "0.1.0"
+description = "Modular Python toolkit for multi-source stock-market data ingestion, price-series analysis and portfolio management with Monte Carlo simulation."
+keywords = [
+    "python",
+    "quantitative-finance",
+    "portfolio-management",
+    "monte-carlo-simulation",
+    "market-data",
+    "yfinance",
+    "financial-analysis",
+]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [
+    { name = "Alejandro Pérez Pujante", email = "perezpujantealejandro1@gmail.com" },
+    { name = "Antonio Alberto Presa Ortega" },
+]
+requires-python = ">=3.14"
+dependencies = [
+    "ipykernel>=7.4.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.6",
+    "plotly>=7.1.0",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+    "seaborn>=0.13.2",
+    "yfinance>=1.7.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # conflicts with the Ruff formatter (trailing commas)
+    "CPY001", # no copyright notice required for this coursework project
+    "D203",   # incompatible with D211: prefer no blank line before a class docstring
+    "D213",   # incompatible with D212: prefer the summary on the first line
+    "ISC001", # conflicts with the Ruff formatter (implicit string concatenation)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["quantfolio"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+strict = true
+python_version = "3.14"
+files = ["src", "tests"]
+mypy_path = "src"
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-config --strict-markers --cov=quantfolio --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["quantfolio"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
