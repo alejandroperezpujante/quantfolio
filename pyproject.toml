@@ -16,7 +16,7 @@ license = "MIT"
 license-files = ["LICENSE.txt"]
 authors = [
     { name = "Alejandro Pérez Pujante", email = "perezpujantealejandro1@gmail.com" },
-    { name = "Antonio Alberto Presa Ortega" },
+    { name = "Antonio Alberto Presa Ortega", email = "antonio.alberto.presa.ortega@gmail.com" },
 ]
 requires-python = ">=3.14"
 dependencies = [
