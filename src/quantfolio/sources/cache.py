@@ -7,21 +7,13 @@ import pandas as pd
 
 from quantfolio.constants import MIN_OBSERVATIONS
 from quantfolio.models import PriceSeries
-from quantfolio.sources.base import DateLike, PriceSource, validate_ticker
+from quantfolio.sources.base import DateLike, PriceSource, naive_timestamp, validate_ticker
 
 
 def _slug(value: str) -> str:
     """Return a filesystem-friendly slug for a provider name."""
     slug = "".join(character if character.isalnum() else "-" for character in value.lower())
     return slug.strip("-")
-
-
-def _naive_timestamp(value: DateLike) -> pd.Timestamp:
-    """Convert a date-like value to a timezone-naive timestamp."""
-    stamp = pd.Timestamp(value)
-    if stamp.tz is not None:
-        return stamp.tz_localize(None)
-    return stamp
 
 
 class CachedPriceSource(PriceSource):
@@ -107,10 +99,10 @@ class CachedPriceSource(PriceSource):
         except OSError, KeyError, TypeError, ValueError:
             return None
 
-        requested_start = _naive_timestamp(start)
+        requested_start = naive_timestamp(start)
         if cached.prices.index.min() > requested_start:
             return None
-        requested_end = _naive_timestamp(end) if end is not None else None
+        requested_end = naive_timestamp(end) if end is not None else None
         reference = requested_end if requested_end is not None else pd.Timestamp.now().normalize()
         if cached.prices.index.max() < reference - pd.Timedelta(days=self._ttl_days):
             return None

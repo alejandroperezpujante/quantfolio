@@ -1,13 +1,14 @@
 """Tests for the market-data sources."""
 
-from typing import TYPE_CHECKING, cast
+import json
+from typing import TYPE_CHECKING, Self, cast
 
 import pandas as pd
 import pytest
 
 from quantfolio.sources.base import validate_ticker
 from quantfolio.sources.cache import CachedPriceSource
-from quantfolio.sources.stooq import StooqSource
+from quantfolio.sources.kraken import KrakenSource
 from quantfolio.sources.yahoo import YahooFinanceSource
 from tests.helpers import TRADING_DATES, StubSource
 
@@ -142,69 +143,165 @@ def test_yahoo_source_rejects_empty_tickers(
         YahooFinanceSource().get_prices("  ", "2025-01-02")
 
 
-def _stooq_frame() -> pd.DataFrame:
-    """Return a minimal Stooq-style CSV frame."""
-    return pd.DataFrame({"Date": ["2025-01-02", "2025-01-03"], "Close": [10.0, 11.0]})
+class _FakeResponse:
+    """Minimal context-manager replacement for a urlopen response."""
+
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
+
+    def read(self) -> bytes:
+        """Return the JSON-encoded payload."""
+        return json.dumps(self._payload).encode()
+
+    def __enter__(self) -> Self:
+        """Enter the context manager."""
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Exit the context manager."""
 
 
-def test_stooq_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stooq CSV responses are normalized into a PriceSeries."""
+def _kraken_payload() -> dict[str, object]:
+    """Return a minimal Kraken OHLC payload with two daily candles."""
+    return {
+        "error": [],
+        "result": {
+            "XXBTZUSD": [
+                [
+                    1735776000.0,
+                    "93000.0",
+                    "95000.0",
+                    "92000.0",
+                    "94000.0",
+                    "93500.0",
+                    "10.5",
+                    100.0,
+                ],
+                [
+                    1735862400.0,
+                    "94000.0",
+                    "96000.0",
+                    "93000.0",
+                    "95000.0",
+                    "94500.0",
+                    "12.5",
+                    120.0,
+                ],
+            ],
+            "last": 1735862400.0,
+        },
+    }
 
-    def fake_read_csv(url: str) -> pd.DataFrame:
-        assert "s=aapl.us" in url
-        assert "d1=20250102" in url
-        assert "d2=20250110" in url
-        return _stooq_frame()
 
-    monkeypatch.setattr("quantfolio.sources.stooq.pd.read_csv", fake_read_csv)
+def test_kraken_source_parses_ohlc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kraken responses are normalized into a PriceSeries."""
 
-    asset = StooqSource().get_prices("aapl.us", "2025-01-02", "2025-01-10")
+    def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
+        assert "pair=XBTUSD" in url
+        assert "interval=1440" in url
+        assert timeout == 30
+        return _FakeResponse(_kraken_payload())
 
-    assert asset.source == "Stooq"
-    assert list(asset.prices) == [10.0, 11.0]
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    asset = KrakenSource().get_prices("BTC/USD", "2025-01-02", "2025-01-10")
+
+    assert asset.ticker == "BTC/USD"
+    assert asset.source == "Kraken"
+    assert list(asset.prices) == [94000.0, 95000.0]
 
 
-def test_stooq_source_rejects_empty_payloads(
+def test_kraken_source_filters_by_end_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The end date is exclusive, matching the other providers."""
+
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    asset = KrakenSource().get_prices("XBTUSD", "2025-01-02", "2025-01-03")
+
+    assert list(asset.prices) == [94000.0]
+
+
+def test_kraken_source_rejects_endpoint_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Empty CSV responses raise a clear error."""
+    """Errors reported by the endpoint raise a clear exception."""
+    payload = {"error": ["EQuery:Unknown asset pair"], "result": {}}
 
-    def fake_read_csv(_url: str) -> pd.DataFrame:
-        return pd.DataFrame()
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(payload)
 
-    monkeypatch.setattr("quantfolio.sources.stooq.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
-    with pytest.raises(ValueError, match="No se han encontrado"):
-        StooqSource().get_prices("aapl.us", "2025-01-02")
+    with pytest.raises(ValueError, match="Kraken devolvió un error"):
+        KrakenSource().get_prices("XBTUSD", "2025-01-02")
 
 
-def test_stooq_source_rejects_missing_close_column(
+def test_kraken_source_rejects_empty_candles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CSV responses without close prices are rejected."""
+    """Empty candle lists raise a clear error."""
+    payload = {"error": [], "result": {"XXBTZUSD": [], "last": 0.0}}
 
-    def fake_read_csv(_url: str) -> pd.DataFrame:
-        return pd.DataFrame({"Date": ["2025-01-02"]})
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(payload)
 
-    monkeypatch.setattr("quantfolio.sources.stooq.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
     with pytest.raises(ValueError, match="No se han encontrado"):
-        StooqSource().get_prices("aapl.us", "2025-01-02")
+        KrakenSource().get_prices("XBTUSD", "2025-01-02")
 
 
-def test_stooq_source_wraps_download_errors(
+def test_kraken_source_rejects_malformed_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unexpected payload shapes raise a clear error."""
+    payload = {"error": [], "result": "unexpected"}
+
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    with pytest.raises(ValueError, match="No se han encontrado"):
+        KrakenSource().get_prices("XBTUSD", "2025-01-02")
+
+
+def test_kraken_source_rejects_windows_without_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A window that excludes every candle raises a clear error."""
+
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    with pytest.raises(ValueError, match="No se han encontrado"):
+        KrakenSource().get_prices("XBTUSD", "2025-06-01")
+
+
+def test_kraken_source_wraps_download_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Network errors are reported as download errors."""
 
-    def fake_read_csv(_url: str) -> pd.DataFrame:
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
         msg = "offline"
         raise OSError(msg)
 
-    monkeypatch.setattr("quantfolio.sources.stooq.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
     with pytest.raises(ValueError, match="No se pudo descargar"):
-        StooqSource().get_prices("aapl.us", "2025-01-02")
+        KrakenSource().get_prices("XBTUSD", "2025-01-02")
 
 
 def test_cache_writes_and_reuses_csv(tmp_path: Path) -> None:
