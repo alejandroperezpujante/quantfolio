@@ -76,6 +76,23 @@ def test_zero_volatility_grows_at_the_assumed_return() -> None:
     np.testing.assert_allclose(paths[:, 1], expected, rtol=1e-12)
 
 
+def test_simulated_log_growth_reproduces_the_estimated_drift() -> None:
+    """Volatility adds dispersion but no downward bias on the log growth."""
+    rng = np.random.default_rng(3)
+    log_returns = rng.normal(0.0004, 0.012, 1_000)
+    annual_return, annual_volatility = annualized_log_assumptions(pd.Series(np.expm1(log_returns)))
+
+    paths = simulate_gbm_paths(
+        initial_value=100.0,
+        annual_return=annual_return,
+        annual_volatility=annual_volatility,
+        parameters=MonteCarloParameters(n_paths=20_000, horizon=252, seed=5),
+    )
+
+    mean_log_growth = float(np.log(paths[-1] / paths[0]).mean())
+    assert mean_log_growth == pytest.approx(annual_return, abs=0.005)
+
+
 @pytest.mark.parametrize(
     ("initial_value", "annual_volatility", "parameters", "message"),
     [

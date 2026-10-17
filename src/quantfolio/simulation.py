@@ -48,10 +48,14 @@ def simulate_gbm_paths(
 
     The process is discretized in trading sessions with annualized assumptions:
 
-    $$S_t = S_0 \\exp\\left((\\mu - \\tfrac{1}{2}\\sigma^2)t + \\sigma W_t\\right)$$
+    $$S_t = S_0 \exp\left(\mu t + \sigma W_t\right)$$
 
-    where ``annual_return`` is the drift of the log process and ``annual_volatility`` its
-    standard deviation.
+    where ``annual_return`` is the annualized drift of the log process and ``annual_volatility``
+    its standard deviation, so the simulated log returns reproduce the estimated log drift. With
+    this log-drift parameterization the expected price grows at
+    ``annual_return + annual_volatility**2 / 2`` per year, equivalently to the classic
+    $S_t = S_0 \exp((\mu - \tfrac{1}{2}\sigma^2)t + \sigma W_t)$ form with $\mu$ the drift of
+    $dS = \mu S \, dt + \sigma S \, dW$.
 
     Args:
         initial_value: Value of the process at the first row of the output.
@@ -82,7 +86,7 @@ def simulate_gbm_paths(
     dt = 1.0 / TRADING_DAYS_PER_YEAR
     rng = np.random.default_rng(parameters.seed)
     shocks = rng.standard_normal((parameters.horizon, parameters.n_paths))
-    drift = (annual_return - 0.5 * annual_volatility**2) * dt
+    drift = annual_return * dt
     increments = drift + annual_volatility * math.sqrt(dt) * shocks
     log_paths = np.cumsum(increments, axis=0)
     return initial_value * np.exp(np.vstack([np.zeros(parameters.n_paths), log_paths]))
@@ -95,7 +99,9 @@ def annualized_log_assumptions(returns: pd.Series[float]) -> tuple[float, float]
         returns: Daily simple returns, for example ``prices.pct_change().dropna()``.
 
     Returns:
-        Tuple ``(annual_return, annual_volatility)`` of the log process.
+        Tuple ``(annual_return, annual_volatility)`` of the log process: the annualized mean
+        log return and its annualized standard deviation, directly usable by
+        :func:`simulate_gbm_paths`.
 
     Raises:
         ValueError: If there are fewer than two observations or a return is not finite.
