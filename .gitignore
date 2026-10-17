@@ -14,14 +14,17 @@ wheels/
 .ruff_cache/
 .pytest_cache/
 
-# Coverage
+# Coverage and test reports
 .coverage
 .coverage.*
 htmlcov/
 coverage.xml
+junit.xml
 
 # SonarQube scanner
 .scannerwork/
+sonar-report/
+test-report/
 
 # Local data cache
 data/

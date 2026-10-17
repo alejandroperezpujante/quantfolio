@@ -85,7 +85,7 @@ warn_unreachable = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --strict-config --strict-markers --cov=quantfolio --cov-report=term-missing --cov-report=xml --cov-fail-under=80"
+addopts = "-ra -q --strict-config --strict-markers --cov=quantfolio --cov-report=term-missing --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml"
 testpaths = ["tests"]
 
 [tool.coverage.run]

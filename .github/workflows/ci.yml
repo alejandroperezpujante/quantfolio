@@ -1,5 +1,13 @@
 name: CI
 
+# Every change reaches `main` through a pull request: this workflow runs on each
+# pull request and again on each push to the protected branch, so both the merge
+# candidate and the merged revision are validated. The `quality` job runs the
+# test suite; the reusable SonarQube workflow consumes its reports and fails the
+# run when the strict quality gate is not green. Both jobs are required status
+# checks of the `main` branch protection, and both publish traceable evidence
+# (step summaries, artifacts and a summary comment on the pull request).
+
 on:
   push:
     branches: [main]
@@ -9,7 +17,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -46,9 +54,266 @@ jobs:
       - name: Tests + coverage
         run: uv run pytest
 
-      - name: Upload coverage report
+      - name: Report the test evidence
+        if: always()
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          CONTEXT: ${{ github.event_name == 'pull_request' && format('pull request {0}', github.event.pull_request.number) || 'push to main' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          OUT = pathlib.Path("test-report")
+          OUT.mkdir(exist_ok=True)
+          SUMMARY = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          report = {
+              "commit": os.environ["GITHUB_SHA"],
+              "ref": os.environ["REF_NAME"],
+              "context": os.environ["CONTEXT"],
+              "run_url": os.environ["RUN_URL"],
+          }
+
+          try:
+              coverage_root = ET.parse("coverage.xml").getroot()
+              report["coverage_line_rate"] = round(float(coverage_root.get("line-rate", 0)) * 100, 2)
+              report["coverage_branch_rate"] = round(
+                  float(coverage_root.get("branch-rate", 0)) * 100, 2
+              )
+              report["coverage_valid_lines"] = int(coverage_root.get("lines-valid", 0))
+              report["coverage_covered_lines"] = int(coverage_root.get("lines-covered", 0))
+              report["coverage_valid_branches"] = int(coverage_root.get("branches-valid", 0))
+              report["coverage_covered_branches"] = int(coverage_root.get("branches-covered", 0))
+          except (ET.ParseError, KeyError, ValueError):
+              report["coverage_error"] = "coverage.xml no disponible"
+
+          try:
+              testsuites = ET.parse("junit.xml").getroot()
+              tests, failures, errors, skipped, seconds = 0, 0, 0, 0, 0.0
+              for suite in testsuites.iter("testsuite"):
+                  tests += int(suite.get("tests", 0))
+                  failures += int(suite.get("failures", 0))
+                  errors += int(suite.get("errors", 0))
+                  skipped += int(suite.get("skipped", 0))
+                  seconds += float(suite.get("time", 0.0))
+              per_file: dict = {}
+              for case in testsuites.iter("testcase"):
+                  parts = case.get("classname", "?").split(".")
+                  module = parts[1] if len(parts) > 1 else parts[0]
+                  entry = per_file.setdefault(
+                      module, {"tests": 0, "failures": 0, "errors": 0, "skipped": 0, "seconds": 0.0}
+                  )
+                  entry["tests"] = int(entry["tests"]) + 1
+                  entry["seconds"] = round(float(entry["seconds"]) + float(case.get("time", 0)), 3)
+                  for tag, key in (("failure", "failures"), ("error", "errors"), ("skipped", "skipped")):
+                      if case.find(tag) is not None:
+                          entry[key] = int(entry[key]) + 1
+              junit_files = [
+                  {"file": module, **entry}
+                  for module, entry in sorted(
+                      per_file.items(), key=lambda pair: (-int(pair[1]["tests"]), pair[0])
+                  )
+              ]
+              report.update(
+                  junit_tests=tests,
+                  junit_failures=failures,
+                  junit_errors=errors,
+                  junit_skipped=skipped,
+                  junit_seconds=round(seconds, 2),
+                  junit_files=junit_files,
+              )
+          except (ET.ParseError, KeyError, ValueError):
+              report["junit_error"] = "junit.xml no disponible"
+
+          (OUT / "test-summary.json").write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+          )
+
+          lines = [
+              "## Test suite evidence",
+              "",
+              f"Commit `{report['commit'][:12]}` — {report['context']} — "
+              f"[workflow run]({report['run_url']})",
+              "",
+              "| Gate | Configuration |",
+              "|---|---|",
+              "| `ruff check` | all rules enabled |",
+              "| `ruff format --check` | canonical formatting |",
+              "| `mypy src tests` | strict typing |",
+              "| `pytest` | network-free tests, coverage ≥ 80 % |",
+          ]
+          if "coverage_line_rate" in report:
+              lines += [
+                  "",
+                  f"**Coverage**: {report['coverage_line_rate']} % lines "
+                  f"({report['coverage_covered_lines']}/{report['coverage_valid_lines']}), "
+                  f"{report['coverage_branch_rate']} % branches "
+                  f"({report['coverage_covered_branches']}/{report['coverage_valid_branches']})",
+              ]
+              if report.get("junit_tests"):
+                  lines += [
+                      f"**Tests**: {report['junit_tests']} in {report['junit_seconds']} s "
+                      f"(failures {report['junit_failures']}, errors {report['junit_errors']}, "
+                      f"skipped {report['junit_skipped']})",
+                      "",
+                      "| Test file | Tests | Failures | Errors | Time (s) |",
+                      "|---|---:|---:|---:|---:|",
+                  ]
+                  for entry in report["junit_files"]:
+                      lines.append(
+                          f"| `{entry['file']}` | {entry['tests']} | {entry['failures']} "
+                          f"| {entry['errors']} | {entry['seconds']} |"
+                      )
+          else:
+              lines += ["", "> Coverage report unavailable: pytest did not complete."]
+          SUMMARY.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("\n".join(lines))
+          PY
+
+      - name: Upload the test report
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: coverage
-          path: coverage.xml
-          if-no-files-found: error
+          name: test-report
+          path: |
+            coverage.xml
+            junit.xml
+            test-report/
+          if-no-files-found: warn
+
+  sonar:
+    name: Strict analysis
+    needs: [quality]
+    uses: ./.github/workflows/sonarqube.yml
+    with:
+      revision: ${{ github.sha }}
+    secrets:
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  report:
+    name: Evidence report
+    needs: [quality, sonar]
+    if: ${{ always() && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Download the test report
+        uses: actions/download-artifact@v8
+        with:
+          name: test-report
+          path: test-report
+
+      - name: Download the SonarQube report
+        uses: actions/download-artifact@v8
+        with:
+          name: sonar-report
+          path: sonar-report
+
+      - name: Post the evidence comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          SONAR_RESULT: ${{ needs.sonar.result }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          MARKER = "<!-- quantfolio-evidence -->"
+          RUN = os.environ["RUN_URL"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          number = os.environ["PR_NUMBER"]
+
+          def load(path):
+              """Read one summary file; a cancelled job leaves none behind."""
+              try:
+                  return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+              except (OSError, ValueError):
+                  return {}
+
+          tests = load("test-report/test-summary.json")
+          sonar = load("sonar-report/gate-summary.json")
+
+          lines = [
+              MARKER,
+              "## Informe de comprobaciones del *pull request*",
+              "",
+              f"Commit `{os.environ['GITHUB_SHA'][:12]}` — [workflow run]({RUN})",
+              "",
+              "| Comprobación | Resultado | Evidencia |",
+              "|---|---|---|",
+              f"| Quality gates (ruff, mypy, pytest) | {os.environ['QUALITY_RESULT']} | "
+              "artefacto `test-report` |",
+              f"| Strict analysis (SonarQube) | {os.environ['SONAR_RESULT']} | "
+              "artefacto `sonar-report` |",
+          ]
+          if tests.get("coverage_line_rate") is not None:
+              lines += [
+                  "",
+                  "### Pruebas y cobertura",
+                  "",
+                  f"- Cobertura: {tests['coverage_line_rate']} % de líneas, "
+                  f"{tests['coverage_branch_rate']} % de ramas.",
+              ]
+              if tests.get("junit_tests"):
+                  lines.append(
+                      f"- {tests['junit_tests']} pruebas en {tests['junit_seconds']} s "
+                      f"(fallos {tests['junit_failures']}, errores {tests['junit_errors']}, "
+                      f"omitidas {tests['junit_skipped']})."
+                  )
+          if sonar.get("dashboard_url"):
+              lines += [
+                  "",
+                  "### Análisis SonarQube",
+                  "",
+                  f"- [Dashboard]({sonar['dashboard_url']}) — tarea {sonar.get('ce_task_id', '?')}.",
+                  f"- Quality gate `Quantfolio Strict`: "
+                  f"**{sonar.get('gate_status', 'desconocido')}**.",
+              ]
+              for condition in sonar.get("gate_conditions", []):
+                  lines.append(
+                      f"  - `{condition['metric_key']}`: {condition.get('actual', '-')} "
+                      f"(umbral {condition.get('comparator', '')} "
+                      f"{condition.get('threshold', '')}, {condition['status']})."
+                  )
+              if sonar.get("issues_total") is not None:
+                  lines.append(f"- Incidencias abiertas: {sonar['issues_total']}.")
+          lines += ["", "Los detalles completos están en el resumen de cada *run*."]
+
+          body = "\n".join(lines)
+          headers = {
+              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+          base = f"https://api.github.com/repos/{repo}/issues/{number}/comments"
+          existing = None
+          request = urllib.request.Request(f"{base}?per_page=100", headers=headers)
+          with urllib.request.urlopen(request, timeout=60) as response:
+              for comment in json.load(response):
+                  if comment["body"].startswith(MARKER):
+                      existing = comment["id"]
+                      break
+          payload = json.dumps({"body": body}).encode()
+          if existing is None:
+              request = urllib.request.Request(base, data=payload, headers=headers, method="POST")
+          else:
+              request = urllib.request.Request(
+                  f"{base}/{existing}", data=payload, headers=headers, method="PATCH"
+              )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              print(f"Evidence comment {'posted' if existing is None else 'updated'}: {body}")
+              response.read()
+          PY
