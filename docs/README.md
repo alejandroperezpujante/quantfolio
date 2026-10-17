@@ -5,6 +5,8 @@ assignment. These documents contain only definitions, standard formulas and cite
 solutions, implementation guidance, or design advice.
 
 - Assignment text (extracted): [assignment/Taller_B1_T1.md](assignment/Taller_B1_T1.md)
+- Project documentation (not background research): [architecture.md](architecture.md) — UML class diagram and
+  data-flow diagram of the `quantfolio` package.
 - All sources were accessed on **2026-10-01**.
 - Trusted-source preference: central banks, BIS, IMF, World Bank, OECD, Eurostat, regulators, official index providers,
   exchanges, and university/established references. Investopedia and Wikipedia appear only as secondary/supporting
