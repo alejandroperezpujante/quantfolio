@@ -130,14 +130,18 @@ def test_annualized_log_assumptions_of_constant_returns() -> None:
 
 def test_annualized_log_assumptions_requires_two_observations() -> None:
     """A single return is not enough to estimate the assumptions."""
+    returns = pd.Series([0.01], dtype=float)
+
     with pytest.raises(ValueError, match="dos rentabilidades"):
-        annualized_log_assumptions(pd.Series([0.01], dtype=float))
+        annualized_log_assumptions(returns)
 
 
 def test_annualized_log_assumptions_rejects_returns_below_minus_one() -> None:
     """Returns below -100 % make the log transformation undefined."""
+    returns = pd.Series([0.01, -1.5], dtype=float)
+
     with pytest.raises(ValueError, match="finitas"):
-        annualized_log_assumptions(pd.Series([0.01, -1.5], dtype=float))
+        annualized_log_assumptions(returns)
 
 
 def test_paths_to_frame_labels_columns() -> None:

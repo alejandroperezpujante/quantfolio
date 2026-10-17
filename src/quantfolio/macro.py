@@ -94,7 +94,7 @@ class FredMacroSource:
         if end is not None:
             params["coed"] = pd.Timestamp(end).strftime("%Y-%m-%d")
         try:
-            data = pd.read_csv(f"{FRED_CSV_URL}?{urlencode(params)}")
+            data = pd.read_csv(f"{FRED_CSV_URL}?{urlencode(params)}", dtype=str)
         except (OSError, ValueError) as exc:
             msg = f"No se pudo descargar la serie {identifier} de FRED: {exc}"
             raise ValueError(msg) from exc

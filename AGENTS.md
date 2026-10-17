@@ -41,6 +41,28 @@ repository now contains the toolkit implementation, its tests and its documentat
 
 Pre-commit hooks are installed; do not bypass them with `--no-verify`.
 
+## SonarQube analysis
+
+The project is analysed by the team's SonarQube instance under its strictest configuration: the `Python Strict`
+and `IPython Strict` quality profiles (every analyzer rule active; the only exemptions are `python:S1722`
+new-style-classes and, for notebooks only, `ipython:S113`, both documented in the README) and the
+`Quantfolio Strict` quality gate (zero issues, 100 % coverage, 0 % duplication, A/A/A ratings, on both overall
+and new code).
+
+```console
+uv run pytest          # writes coverage.xml, consumed by the analyzer
+source ~/.config/sonar/quantfolio.env  # SONAR_HOST_URL + SONAR_TOKEN (never committed)
+sonar-scanner          # analyzes src/ + notebooks/ + tests/; fails when the gate is not green
+```
+
+`sonar-project.properties` holds the project settings; server URL and token come from the environment.
+
+CI: `.github/workflows/sonarqube.yml` depends on the `CI` workflow — it only runs after a successful push to
+`main` (never for pull requests) and reuses the `coverage.xml` artifact CI published. It joins the tailnet as an
+ephemeral `tag:ci` node. Required repository secrets/variables: `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`
+(Tailscale OAuth client), `SONAR_TOKEN` (secret) and `SONAR_HOST_URL` (variable). Keep those names in sync if
+the workflow changes.
+
 ## Conventions
 
 - Docstrings and code comments are written in **English** (Google style, as in the scaffold).

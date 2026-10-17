@@ -207,7 +207,8 @@ class Portfolio:
         )
         return paths_to_frame(paths)
 
-    def plot_simulation(self, simulations: pd.DataFrame, *, max_paths: int = 100) -> None:
+    @staticmethod
+    def plot_simulation(simulations: pd.DataFrame, *, max_paths: int = 100) -> None:
         """Display simulated trajectories and the distribution of final values.
 
         Args:

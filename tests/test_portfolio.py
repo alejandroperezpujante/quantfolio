@@ -48,38 +48,34 @@ def test_portfolio_normalizes_weights() -> None:
 
 def test_portfolio_rejects_missing_weights() -> None:
     """Every asset needs a weight."""
+    asset = make_series("AAA", [10.0, 11.0])
+
     with pytest.raises(ValueError, match="ponderación para cada activo"):
-        Portfolio(
-            assets={"AAA": make_series("AAA", [10.0, 11.0])},
-            weights={"BBB": 1.0},
-        )
+        Portfolio(assets={"AAA": asset}, weights={"BBB": 1.0})
 
 
 def test_portfolio_rejects_negative_weights() -> None:
     """Short positions are rejected."""
+    asset = make_series("AAA", [10.0, 11.0])
+
     with pytest.raises(ValueError, match="negativas"):
-        Portfolio(
-            assets={"AAA": make_series("AAA", [10.0, 11.0])},
-            weights={"AAA": -1.0},
-        )
+        Portfolio(assets={"AAA": asset}, weights={"AAA": -1.0})
 
 
 def test_portfolio_rejects_non_finite_weights() -> None:
     """NaN weights are rejected before normalization."""
+    asset = make_series("AAA", [10.0, 11.0])
+
     with pytest.raises(ValueError, match="finitos"):
-        Portfolio(
-            assets={"AAA": make_series("AAA", [10.0, 11.0])},
-            weights={"AAA": float("nan")},
-        )
+        Portfolio(assets={"AAA": asset}, weights={"AAA": float("nan")})
 
 
 def test_portfolio_rejects_zero_total_weight() -> None:
     """Weights must sum to a positive amount."""
+    asset = make_series("AAA", [10.0, 11.0])
+
     with pytest.raises(ValueError, match="positiva"):
-        Portfolio(
-            assets={"AAA": make_series("AAA", [10.0, 11.0])},
-            weights={"AAA": 0.0},
-        )
+        Portfolio(assets={"AAA": asset}, weights={"AAA": 0.0})
 
 
 def test_portfolio_rejects_empty_assets() -> None:
@@ -90,11 +86,10 @@ def test_portfolio_rejects_empty_assets() -> None:
 
 def test_portfolio_rejects_key_without_matching_ticker() -> None:
     """Asset keys must match the ticker of the series."""
+    asset = make_series("BBB", [10.0, 11.0])
+
     with pytest.raises(ValueError, match="no coincide con el ticker"):
-        Portfolio(
-            assets={"AAA": make_series("BBB", [10.0, 11.0])},
-            weights={"AAA": 1.0},
-        )
+        Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0})
 
 
 def test_get_prices_keeps_the_date_union() -> None:
@@ -183,8 +178,10 @@ def test_summary_accepts_a_custom_annualization_factor() -> None:
 
 def test_summary_rejects_non_positive_annualization_factor() -> None:
     """The annualization factor must be positive."""
+    portfolio = build_portfolio()
+
     with pytest.raises(ValueError, match="periods_per_year"):
-        build_portfolio().summary(periods_per_year=0)
+        portfolio.summary(periods_per_year=0)
 
 
 def test_summary_requires_two_return_observations() -> None:

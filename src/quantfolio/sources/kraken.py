@@ -38,7 +38,7 @@ def _to_pair(ticker: str) -> str:
 def _fetch_candles(url: str, symbol: str) -> list[list[object]]:
     """Download and validate the candle list of a Kraken OHLC response."""
     try:
-        with urlopen(url, timeout=HTTP_TIMEOUT) as response:  # noqa: S310
+        with urlopen(url, timeout=HTTP_TIMEOUT) as response:
             payload = cast("dict[str, object]", json.load(response))
     except (OSError, ValueError) as exc:
         msg = f"No se pudo descargar la serie {symbol} de Kraken: {exc}"

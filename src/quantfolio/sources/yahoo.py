@@ -12,6 +12,17 @@ if TYPE_CHECKING:
     from quantfolio.sources.base import DateLike
 
 
+def _first_column(selection: pd.Series[float] | pd.DataFrame) -> pd.Series[float]:
+    """Return a series unchanged or the first column of a frame.
+
+    ``DataFrame.xs`` keeps a frame when it leaves at least one column behind, so multi-level
+    yfinance responses are reduced to the first ticker column.
+    """
+    if isinstance(selection, pd.DataFrame):
+        return cast("pd.Series[float]", selection.iloc[:, 0])
+    return selection
+
+
 def _extract_close(data: pd.DataFrame) -> pd.Series[float]:
     """Return the close-price column of a yfinance response.
 
@@ -26,10 +37,7 @@ def _extract_close(data: pd.DataFrame) -> pd.Series[float]:
 
     """
     if isinstance(data.columns, pd.MultiIndex):
-        close = data.xs("Close", axis=1, level=0)
-        if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]
-        return cast("pd.Series[float]", close)
+        return _first_column(data.xs("Close", axis=1, level=0))
     if "Close" not in data.columns:
         msg = "La descarga no contiene la columna Close."
         raise ValueError(msg)

@@ -45,3 +45,10 @@ jobs:
 
       - name: Tests + coverage
         run: uv run pytest
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: error

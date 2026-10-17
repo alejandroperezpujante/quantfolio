@@ -18,6 +18,10 @@ wheels/
 .coverage
 .coverage.*
 htmlcov/
+coverage.xml
+
+# SonarQube scanner
+.scannerwork/
 
 # Local data cache
 data/
