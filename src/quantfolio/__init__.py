@@ -7,8 +7,8 @@ from quantfolio.portfolio import Portfolio
 from quantfolio.simulation import MonteCarloParameters
 from quantfolio.sources import (
     CachedPriceSource,
+    KrakenSource,
     PriceSource,
-    StooqSource,
     YahooFinanceSource,
 )
 
@@ -16,11 +16,11 @@ __all__ = [
     "TRADING_DAYS_PER_YEAR",
     "CachedPriceSource",
     "FredMacroSource",
+    "KrakenSource",
     "MacroSeries",
     "MonteCarloParameters",
     "Portfolio",
     "PriceSeries",
     "PriceSource",
-    "StooqSource",
     "YahooFinanceSource",
 ]

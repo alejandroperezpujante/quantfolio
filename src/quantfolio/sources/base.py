@@ -4,12 +4,22 @@ from abc import ABC, abstractmethod
 from datetime import date
 from typing import TYPE_CHECKING, cast
 
+import pandas as pd
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from quantfolio.models import PriceSeries
 
 DateLike = str | date
+
+
+def naive_timestamp(value: DateLike) -> pd.Timestamp:
+    """Convert a date-like value to a timezone-naive timestamp."""
+    stamp = pd.Timestamp(value)
+    if stamp.tz is not None:
+        return stamp.tz_localize(None)
+    return stamp
 
 
 def validate_ticker(ticker: str) -> str:
