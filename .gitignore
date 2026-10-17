@@ -19,6 +19,9 @@ wheels/
 .coverage.*
 htmlcov/
 
+# Local data cache
+data/
+
 # Jupyter
 .ipynb_checkpoints/
 
