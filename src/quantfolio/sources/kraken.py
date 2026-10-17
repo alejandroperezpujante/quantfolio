@@ -18,6 +18,9 @@ KRAKEN_OHLC_URL = "https://api.kraken.com/0/public/OHLC"
 #: Kraken daily candles are requested with a 1,440-minute interval.
 KRAKEN_DAILY_INTERVAL = 1_440
 
+#: Maximum number of candles Kraken serves per response (~2 years of daily data).
+KRAKEN_CANDLE_LIMIT = 720
+
 #: Timeout, in seconds, applied to Kraken requests.
 HTTP_TIMEOUT = 30
 
@@ -56,11 +59,45 @@ def _fetch_candles(url: str, symbol: str) -> list[list[object]]:
     return cast("list[list[object]]", candles[0])
 
 
+def _ensure_retention_covers_start(
+    symbol: str,
+    prices: pd.Series[float],
+    start_stamp: pd.Timestamp,
+) -> None:
+    """Reject responses where Kraken's retention window clipped the requested start.
+
+    Kraken returns at most :data:`KRAKEN_CANDLE_LIMIT` of the most recent candles of an
+    interval, so a response that hits that limit while starting well after ``start_stamp``
+    has silently dropped every earlier observation.
+
+    Args:
+        symbol: Pair ticker, used in the error message.
+        prices: Full close-price series returned by the endpoint.
+        start_stamp: First observation date requested by the caller.
+
+    Raises:
+        ValueError: If the response starts more than one day after ``start_stamp``.
+
+    """
+    first_observation = prices.index.min()
+    clipped = first_observation > start_stamp + pd.Timedelta(days=1)
+    if len(prices) >= KRAKEN_CANDLE_LIMIT and clipped:
+        msg = (
+            f"Kraken solo conserva las últimas {KRAKEN_CANDLE_LIMIT} velas de cada intervalo "
+            f"(≈2 años de datos diarios): para {symbol} la primera vela disponible es "
+            f"{first_observation.date()}, no {start_stamp.date()}. "
+            "Ajusta la fecha de inicio o usa otro proveedor."
+        )
+        raise ValueError(msg)
+
+
 class KrakenSource(PriceSource):
     """Historical daily close prices from Kraken's keyless OHLC API.
 
     This provider complements Yahoo Finance and demonstrates that different market-data
-    APIs produce identical internal objects.
+    APIs produce identical internal objects. Kraken only keeps the most recent candles of
+    each interval (about two years of daily data), so a ``start`` beyond that retention
+    window raises a clear error instead of returning a silently truncated series.
     """
 
     @property
@@ -110,4 +147,5 @@ class KrakenSource(PriceSource):
         if window.empty:
             msg = f"No se han encontrado datos para {symbol} en Kraken."
             raise ValueError(msg)
+        _ensure_retention_covers_start(symbol, asset.prices, start_stamp)
         return PriceSeries(ticker=symbol, prices=window, source=self.name)

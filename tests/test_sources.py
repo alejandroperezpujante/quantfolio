@@ -304,6 +304,58 @@ def test_kraken_source_wraps_download_errors(
         KrakenSource().get_prices("XBTUSD", "2025-01-02")
 
 
+def _kraken_capped_payload(first_candle: pd.Timestamp) -> dict[str, object]:
+    """Return a payload with Kraken's maximum number of daily candles."""
+    candles = [
+        [
+            (first_candle + pd.Timedelta(days=position)).timestamp(),
+            "93000.0",
+            "95000.0",
+            "92000.0",
+            "94000.0",
+            "94000.0",
+            "10.5",
+            100.0,
+        ]
+        for position in range(720)
+    ]
+    return {"error": [], "result": {"XXBTZUSD": candles, "last": 0.0}}
+
+
+def test_kraken_source_rejects_starts_beyond_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A response clipped by Kraken's 720-candle limit raises instead of truncating."""
+    payload = _kraken_capped_payload(pd.Timestamp("2024-10-27", tz="UTC"))
+
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    with pytest.raises(ValueError, match="720 velas"):
+        KrakenSource().get_prices("XBTUSD", "2020-01-01")
+
+
+def test_kraken_source_accepts_full_responses_covering_the_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A response at the candle limit is accepted when it starts at the requested date."""
+    payload = _kraken_capped_payload(pd.Timestamp("2024-10-27", tz="UTC"))
+
+    def fake_urlopen(_url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    asset = KrakenSource().get_prices("XBTUSD", "2024-10-27")
+
+    assert asset.prices.index.min() == pd.Timestamp("2024-10-27")
+    assert len(asset.prices) == 720
+
+
 def test_cache_writes_and_reuses_csv(tmp_path: Path) -> None:
     """A valid cache file avoids a second download."""
     upstream = StubSource(TRADING_DATES)
