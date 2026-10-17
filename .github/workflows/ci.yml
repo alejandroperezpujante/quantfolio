@@ -225,6 +225,8 @@ jobs:
           QUALITY_RESULT: ${{ needs.quality.result }}
           SONAR_RESULT: ${{ needs.sonar.result }}
         run: |
+          test -s test-report/test-report/test-summary.json
+          test -s sonar-report/sonar-report/gate-summary.json
           python3 - <<'PY'
           import json
           import os
@@ -243,8 +245,10 @@ jobs:
               except (OSError, ValueError):
                   return {}
 
-          tests = load("test-report/test-summary.json")
-          sonar = load("sonar-report/gate-summary.json")
+          # Artifacts keep the repo-relative path, so the JSON files sit one
+          # level below the download directories.
+          tests = load("test-report/test-report/test-summary.json")
+          sonar = load("sonar-report/sonar-report/gate-summary.json")
 
           lines = [
               MARKER,
