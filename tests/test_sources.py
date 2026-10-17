@@ -6,14 +6,16 @@ from typing import TYPE_CHECKING, Self, cast
 import pandas as pd
 import pytest
 
-from quantfolio.sources.base import validate_ticker
+from quantfolio.sources.base import DateLike, PriceSource, naive_timestamp, validate_ticker
 from quantfolio.sources.cache import CachedPriceSource
 from quantfolio.sources.kraken import KrakenSource
-from quantfolio.sources.yahoo import YahooFinanceSource
+from quantfolio.sources.yahoo import YahooFinanceSource, _first_column
 from tests.helpers import TRADING_DATES, StubSource
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from quantfolio.models import PriceSeries
 
 
 def test_validate_ticker_strips_whitespace() -> None:
@@ -29,8 +31,46 @@ def test_validate_ticker_rejects_empty_tickers() -> None:
 
 def test_validate_ticker_rejects_non_string_values() -> None:
     """Non-string tickers are rejected with a type error."""
+    value = cast("str", 42)
+
     with pytest.raises(TypeError, match="texto"):
-        validate_ticker(cast("str", 42))
+        validate_ticker(value)
+
+
+def test_naive_timestamp_drops_timezone_information() -> None:
+    """Timezone-aware inputs are converted to timezone-naive timestamps."""
+    stamp = naive_timestamp("2025-01-02T10:30:00+02:00")
+
+    assert stamp.tz is None
+    assert (stamp.hour, stamp.minute) == (10, 30)
+
+
+class _BareSource(PriceSource):
+    """Test double that keeps the abstract base implementations of the contract."""
+
+    @property
+    def name(self) -> str:
+        """Forward to the base property, which is expected to raise."""
+        return cast("PriceSource", super()).name
+
+    def get_prices(
+        self,
+        ticker: str,
+        start: DateLike,
+        end: DateLike | None = None,
+    ) -> PriceSeries:
+        """Forward to the base download, which is expected to raise."""
+        return cast("PriceSource", super()).get_prices(ticker, start, end)
+
+
+def test_abstract_price_source_members_raise_not_implemented() -> None:
+    """The abstract contract raises when its base members are reached directly."""
+    bare = _BareSource()
+
+    with pytest.raises(NotImplementedError):
+        _ = bare.name
+    with pytest.raises(NotImplementedError):
+        bare.get_prices("AAA", "2025-01-02")
 
 
 def test_get_many_returns_one_series_per_ticker() -> None:
@@ -50,8 +90,10 @@ def test_get_many_returns_one_series_per_ticker() -> None:
 )
 def test_get_many_rejects_invalid_batches(tickers: list[str], message: str) -> None:
     """Empty batches and duplicated tickers are rejected."""
+    source = StubSource(TRADING_DATES)
+
     with pytest.raises(ValueError, match=message):
-        StubSource(TRADING_DATES).get_many(tickers, "2025-01-02")
+        source.get_many(tickers, "2025-01-02")
 
 
 def _price_frame() -> pd.DataFrame:
@@ -100,6 +142,26 @@ def test_yahoo_source_handles_multiindex_columns(
     assert list(asset.prices) == [10.0, 11.0]
 
 
+def test_first_column_keeps_a_series_selection_unchanged() -> None:
+    """A series is returned unchanged."""
+    selection = pd.Series([10.0, 11.0], index=TRADING_DATES[:2], name="Close")
+
+    assert _first_column(selection) is selection
+
+
+def test_first_column_reduces_a_frame_selection_to_its_first_column() -> None:
+    """Frame selections keep the first ticker column."""
+    selection = pd.DataFrame(
+        {"AAPL": [10.0, 11.0], "MSFT": [20.0, 21.0]},
+        index=TRADING_DATES[:2],
+    )
+
+    result = _first_column(selection)
+
+    assert list(result) == [10.0, 11.0]
+    assert result.name == "AAPL"
+
+
 def test_yahoo_source_rejects_empty_downloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -110,8 +172,10 @@ def test_yahoo_source_rejects_empty_downloads(
 
     monkeypatch.setattr("quantfolio.sources.yahoo.yf.download", fake_download)
 
+    source = YahooFinanceSource()
+
     with pytest.raises(ValueError, match="No se han encontrado"):
-        YahooFinanceSource().get_prices("AAPL", "2025-01-02")
+        source.get_prices("AAPL", "2025-01-02")
 
 
 def test_yahoo_source_rejects_missing_close_column(
@@ -125,8 +189,10 @@ def test_yahoo_source_rejects_missing_close_column(
 
     monkeypatch.setattr("quantfolio.sources.yahoo.yf.download", fake_download)
 
+    source = YahooFinanceSource()
+
     with pytest.raises(ValueError, match="Close"):
-        YahooFinanceSource().get_prices("AAPL", "2025-01-02")
+        source.get_prices("AAPL", "2025-01-02")
 
 
 def test_yahoo_source_rejects_empty_tickers(
@@ -139,8 +205,10 @@ def test_yahoo_source_rejects_empty_tickers(
 
     monkeypatch.setattr("quantfolio.sources.yahoo.yf.download", fake_download)
 
+    source = YahooFinanceSource()
+
     with pytest.raises(ValueError, match="vacío"):
-        YahooFinanceSource().get_prices("  ", "2025-01-02")
+        source.get_prices("  ", "2025-01-02")
 
 
 class _FakeResponse:
@@ -237,8 +305,10 @@ def test_kraken_source_rejects_endpoint_errors(
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
+    source = KrakenSource()
+
     with pytest.raises(ValueError, match="Kraken devolvió un error"):
-        KrakenSource().get_prices("XBTUSD", "2025-01-02")
+        source.get_prices("XBTUSD", "2025-01-02")
 
 
 def test_kraken_source_rejects_empty_candles(
@@ -253,8 +323,10 @@ def test_kraken_source_rejects_empty_candles(
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
+    source = KrakenSource()
+
     with pytest.raises(ValueError, match="No se han encontrado"):
-        KrakenSource().get_prices("XBTUSD", "2025-01-02")
+        source.get_prices("XBTUSD", "2025-01-02")
 
 
 def test_kraken_source_rejects_malformed_payloads(
@@ -269,8 +341,10 @@ def test_kraken_source_rejects_malformed_payloads(
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
+    source = KrakenSource()
+
     with pytest.raises(ValueError, match="No se han encontrado"):
-        KrakenSource().get_prices("XBTUSD", "2025-01-02")
+        source.get_prices("XBTUSD", "2025-01-02")
 
 
 def test_kraken_source_rejects_windows_without_data(
@@ -284,8 +358,10 @@ def test_kraken_source_rejects_windows_without_data(
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
+    source = KrakenSource()
+
     with pytest.raises(ValueError, match="No se han encontrado"):
-        KrakenSource().get_prices("XBTUSD", "2025-06-01")
+        source.get_prices("XBTUSD", "2025-06-01")
 
 
 def test_kraken_source_wraps_download_errors(
@@ -300,8 +376,10 @@ def test_kraken_source_wraps_download_errors(
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
+    source = KrakenSource()
+
     with pytest.raises(ValueError, match="No se pudo descargar"):
-        KrakenSource().get_prices("XBTUSD", "2025-01-02")
+        source.get_prices("XBTUSD", "2025-01-02")
 
 
 def _kraken_capped_payload(first_candle: pd.Timestamp) -> dict[str, object]:
@@ -334,8 +412,10 @@ def test_kraken_source_rejects_starts_beyond_retention(
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
 
+    source = KrakenSource()
+
     with pytest.raises(ValueError, match="720 velas"):
-        KrakenSource().get_prices("XBTUSD", "2020-01-01")
+        source.get_prices("XBTUSD", "2020-01-01")
 
 
 def test_kraken_source_accepts_full_responses_covering_the_start(
@@ -469,5 +549,7 @@ def test_cache_downloads_when_the_window_has_one_observation(
 
 def test_cache_rejects_negative_ttl(tmp_path: Path) -> None:
     """The cache lifetime cannot be negative."""
+    upstream = StubSource(TRADING_DATES)
+
     with pytest.raises(ValueError, match="ttl_days"):
-        CachedPriceSource(StubSource(TRADING_DATES), cache_dir=tmp_path, ttl_days=-1)
+        CachedPriceSource(upstream, cache_dir=tmp_path, ttl_days=-1)

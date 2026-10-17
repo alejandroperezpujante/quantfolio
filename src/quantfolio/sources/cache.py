@@ -93,26 +93,40 @@ class CachedPriceSource(PriceSource):
     ) -> PriceSeries | None:
         """Return a cached series when it covers the requested window, else ``None``."""
         try:
-            frame = pd.read_csv(path, index_col="Date", parse_dates=True)
+            frame = pd.read_csv(path, index_col="Date", parse_dates=True, dtype={"Close": float})
             raw = cast("pd.Series[float]", frame["Close"])
             cached = PriceSeries(ticker=ticker, prices=raw, source=self.name)
         except OSError, KeyError, TypeError, ValueError:
             return None
 
-        requested_start = naive_timestamp(start)
-        if cached.prices.index.min() > requested_start:
+        window = self._covered_window(cached, start, end)
+        if len(window) < MIN_OBSERVATIONS:
             return None
+        return PriceSeries(ticker=ticker, prices=window, source=self.name)
+
+    def _covered_window(
+        self,
+        cached: PriceSeries,
+        start: DateLike,
+        end: DateLike | None,
+    ) -> pd.Series[float]:
+        """Return the cached observations that fall inside the requested window.
+
+        The window is empty when the file starts after ``start`` or is older than ``ttl_days``
+        for the requested ``end``, so a short window always means a cache miss.
+        """
+        requested_start = naive_timestamp(start)
         requested_end = naive_timestamp(end) if end is not None else None
         reference = requested_end if requested_end is not None else pd.Timestamp.now().normalize()
-        if cached.prices.index.max() < reference - pd.Timedelta(days=self._ttl_days):
-            return None
+        starts_late = cached.prices.index.min() > requested_start
+        too_stale = cached.prices.index.max() < reference - pd.Timedelta(days=self._ttl_days)
+        if starts_late or too_stale:
+            return pd.Series(dtype=float)
 
         window = cached.prices[cached.prices.index >= requested_start]
         if requested_end is not None:
             window = window[window.index < requested_end]
-        if len(window) < MIN_OBSERVATIONS:
-            return None
-        return PriceSeries(ticker=ticker, prices=window, source=self.name)
+        return window
 
     @staticmethod
     def _write_cache(path: Path, asset: PriceSeries) -> None:

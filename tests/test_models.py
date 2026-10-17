@@ -61,44 +61,50 @@ def test_price_series_single_observation_has_zero_std() -> None:
 
 def test_price_series_rejects_empty_ticker() -> None:
     """Whitespace-only tickers are rejected."""
+    prices = make_prices([10.0])
+
     with pytest.raises(ValueError, match="ticker"):
-        PriceSeries(ticker="   ", prices=make_prices([10.0]))
+        PriceSeries(ticker="   ", prices=prices)
 
 
 def test_price_series_rejects_empty_series() -> None:
     """Empty price series are rejected."""
+    prices = cast("pd.Series[float]", pd.Series([], dtype=float))
+
     with pytest.raises(ValueError, match="vacía"):
-        PriceSeries(
-            ticker="TEST",
-            prices=cast("pd.Series[float]", pd.Series([], dtype=float)),
-        )
+        PriceSeries(ticker="TEST", prices=prices)
 
 
 def test_price_series_rejects_non_datetime_index() -> None:
     """Price series must be indexed by date."""
+    prices = pd.Series([10.0, 11.0], dtype=float)
+
     with pytest.raises(TypeError, match="DatetimeIndex"):
-        PriceSeries(ticker="TEST", prices=pd.Series([10.0, 11.0], dtype=float))
+        PriceSeries(ticker="TEST", prices=prices)
 
 
 def test_price_series_rejects_non_series_prices() -> None:
     """The prices argument must be a pandas Series."""
+    prices = cast("pd.Series[float]", [10.0, 11.0])
+
     with pytest.raises(TypeError, match=r"pandas\.Series"):
-        PriceSeries(ticker="TEST", prices=cast("pd.Series[float]", [10.0, 11.0]))
+        PriceSeries(ticker="TEST", prices=prices)
 
 
 def test_price_series_rejects_series_without_valid_prices() -> None:
     """A series with only non-positive values is rejected."""
+    prices = pd.Series([-1.0, 0.0], index=TRADING_DATES[:2])
+
     with pytest.raises(ValueError, match="positivos"):
-        PriceSeries(
-            ticker="TEST",
-            prices=pd.Series([-1.0, 0.0], index=TRADING_DATES[:2]),
-        )
+        PriceSeries(ticker="TEST", prices=prices)
 
 
 def test_price_series_simulation_requires_two_prices() -> None:
     """Monte Carlo simulation needs at least two observations."""
+    asset = make_series("TEST", [10.0])
+
     with pytest.raises(ValueError, match="dos precios"):
-        make_series("TEST", [10.0]).simulate_monte_carlo()
+        asset.simulate_monte_carlo()
 
 
 def test_price_series_simulation_starts_at_the_last_price() -> None:

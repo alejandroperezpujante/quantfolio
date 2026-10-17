@@ -27,6 +27,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=3.0.6",
     "plotly>=7.1.0",
+    "pyrefly>=0.60.0",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
     "seaborn>=0.13.2",
@@ -68,6 +69,9 @@ known-first-party = ["quantfolio"]
 [tool.ruff.lint.per-file-ignores]
 "notebooks/**" = ["T201"] # notebooks are the user-facing entry point; printing is their output
 "tests/**" = ["PLR2004", "S101"]
+# S310 audits urlopen URLs; this module only calls the constant HTTPS Kraken endpoint
+# with percent-encoded parameters.
+"src/quantfolio/sources/kraken.py" = ["S310"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -81,7 +85,7 @@ warn_unreachable = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --strict-config --strict-markers --cov=quantfolio --cov-report=term-missing --cov-fail-under=80"
+addopts = "-ra -q --strict-config --strict-markers --cov=quantfolio --cov-report=term-missing --cov-report=xml --cov-fail-under=80"
 testpaths = ["tests"]
 
 [tool.coverage.run]

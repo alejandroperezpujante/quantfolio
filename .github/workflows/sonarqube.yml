@@ -1,0 +1,215 @@
+# Strict SonarQube analysis of the main branch.
+#
+# This workflow depends on `CI`: it only runs after a successful push to main and
+# reuses the coverage report CI produced, so the analysed revision is the one CI
+# already validated. Pull requests never reach it — the tailnet and SonarQube
+# credentials stay away from unreviewed code.
+#
+# Required repository configuration:
+#   secrets:   TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET — Tailscale OAuth client (tag:ci)
+#              SONAR_TOKEN — SonarQube project analysis token
+#   variables: SONAR_HOST_URL — SonarQube tailnet URL (https://sonar.<tailnet>.ts.net)
+
+name: SonarQube
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analysis:
+    name: Strict analysis
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UV_FROZEN: "1"
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+    steps:
+      - name: Check out the analysed revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Full history so the analyser can blame lines and detect new code.
+          fetch-depth: 0
+
+      - name: Download the coverage report from CI
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        if: github.event_name == 'workflow_dispatch'
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Tests + coverage
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          uv sync --frozen
+          uv run pytest
+
+      - name: Connect to the tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          hostname: quantfolio-ci
+          ping: sonar.pangolin-huchen.ts.net
+
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Report the quality gate
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import pathlib
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from collections import Counter
+
+          BASE = os.environ["SONAR_HOST_URL"].rstrip("/")
+          AUTH = "Basic " + base64.b64encode(f"{os.environ['SONAR_TOKEN']}:".encode()).decode()
+          PROJECT = "quantfolio"
+          DASHBOARD = f"{BASE}/dashboard?id={PROJECT}"
+          OUT = pathlib.Path("sonar-report")
+          OUT.mkdir(exist_ok=True)
+          SUMMARY = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          METRICS = (
+              "coverage,branch_coverage,line_coverage,duplicated_lines_density,"
+              "violations,bugs,vulnerabilities,code_smells,security_hotspots,"
+              "reliability_rating,security_rating,sqale_rating"
+          )
+
+          def get(path, **params):
+              """Call the SonarQube Web API with the project analysis token."""
+              url = f"{BASE}{path}"
+              if params:
+                  url += "?" + urllib.parse.urlencode(params)
+              request = urllib.request.Request(url)
+              request.add_header("Authorization", AUTH)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+
+          lines = [
+              "## SonarQube analysis",
+              "",
+              f"Commit `{os.environ.get('REVISION', '')[:12]}` — "
+              f"[dashboard]({DASHBOARD})",
+          ]
+          report = {"dashboard_url": DASHBOARD}
+          try:
+              gate = get("/api/qualitygates/project_status", projectKey=PROJECT)["projectStatus"]
+              measures = {
+                  measure["metric"]: measure.get("value")
+                  for measure in get(
+                      "/api/measures/component", component=PROJECT, metricKeys=METRICS
+                  )["component"]["measures"]
+              }
+              issues, page = [], 1
+              while True:
+                  payload = get(
+                      "/api/issues/search", componentKeys=PROJECT, resolved="false", ps=500, p=page
+                  )
+                  issues.extend(payload["issues"])
+                  if page * 500 >= payload["total"]:
+                      break
+                  page += 1
+              report.update(
+                  gate=gate,
+                  measures=measures,
+                  issues_total=len(issues),
+                  issues_by_rule=dict(Counter(issue["rule"] for issue in issues)),
+                  issues_by_file=dict(
+                      Counter(issue["component"].split(":")[-1] for issue in issues)
+                  ),
+              )
+              lines += [
+                  "",
+                  f"**Quality gate**: {'PASSED' if gate['status'] == 'OK' else 'FAILED'}",
+                  "",
+                  "| Condition | Actual | Threshold | Status |",
+                  "|---|---|---|---|",
+              ]
+              for condition in gate["conditions"]:
+                  state = "OK" if condition["status"] == "OK" else "**FAIL**"
+                  lines.append(
+                      f"| `{condition['metricKey']}` | {condition.get('actualValue', '-')} "
+                      f"| {condition.get('comparator', '')} {condition.get('errorThreshold', '')} "
+                      f"| {state} |"
+                  )
+              lines += [
+                  "",
+                  f"Open issues: **{len(issues)}** (bugs {measures.get('bugs', '?')}, "
+                  f"vulnerabilities {measures.get('vulnerabilities', '?')}, "
+                  f"code smells {measures.get('code_smells', '?')})",
+                  "",
+                  f"Coverage {measures.get('coverage', '?')} % "
+                  f"(branch {measures.get('branch_coverage', '?')} %), "
+                  f"duplicated lines {measures.get('duplicated_lines_density', '?')} %",
+              ]
+              for title, key in (
+                  ("Issues by rule", "issues_by_rule"),
+                  ("Issues by file", "issues_by_file"),
+              ):
+                  counts = report[key]
+                  if not counts:
+                      continue
+                  lines += ["", f"### {title}", "", "| Item | Count |", "|---|---|"]
+                  for item, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:15]:
+                      lines.append(f"| `{item}` | {count} |")
+          except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
+              lines += ["", f"> Reporting failed: {exc}"]
+
+          task = pathlib.Path(".scannerwork/report-task.txt")
+          if task.exists():
+              report["ce_task"] = dict(
+                  line.split("=", 1) for line in task.read_text().splitlines() if "=" in line
+              )
+          SUMMARY.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          (OUT / "gate-summary.json").write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+          )
+          print("\n".join(lines))
+          PY
+
+      - name: Upload the scan report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonar-report
+          path: |
+            .scannerwork/report-task.txt
+            sonar-report/
+          if-no-files-found: warn

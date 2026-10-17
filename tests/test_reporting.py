@@ -59,14 +59,18 @@ def test_plot_simulation_paths_runs_headless(
 
 def test_plot_simulation_paths_rejects_empty_frames() -> None:
     """An empty simulation matrix cannot be plotted."""
+    empty = pd.DataFrame()
+
     with pytest.raises(ValueError, match="simulaciones"):
-        plot_simulation_paths(pd.DataFrame())
+        plot_simulation_paths(empty)
 
 
 def test_plot_simulation_paths_rejects_non_positive_max_paths() -> None:
     """The number of drawn trajectories must be positive."""
+    simulations = pd.DataFrame(np.ones((3, 2)))
+
     with pytest.raises(ValueError, match="max_paths"):
-        plot_simulation_paths(pd.DataFrame(np.ones((3, 2))), max_paths=0)
+        plot_simulation_paths(simulations, max_paths=0)
 
 
 def test_portfolio_and_series_plot_delegates(

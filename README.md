@@ -220,7 +220,52 @@ uv run pre-commit run --all-files  # los mismos hooks que CI
 
 La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y cubre validaciones,
 limpieza, alineación, caché, simulaciones y generación de informes. GitHub Actions ejecuta los mismos cinco
-controles en cada *pull request*.
+controles en cada *pull request* y en cada `push` a `main` (flujo [`ci.yml`](.github/workflows/ci.yml)) y
+publica `coverage.xml` como artefacto del *run*.
+
+### Análisis estático con SonarQube
+
+El proyecto se analiza contra la instancia SonarQube del equipo con la configuración más estricta posible: los
+perfiles de calidad `Python Strict` e `IPython Strict` (442 y 443 reglas activas respectivamente: todas las del
+analizador) y el *quality gate* `Quantfolio Strict`, que exige cero incidencias, 100 % de cobertura de líneas y
+ramas, 0 % de duplicación y calificaciones A/A/A, tanto en el código total como en el código nuevo. La única
+excepción documentada es `python:S1722` («New-style classes should be used»), una regla heredada de Python 2 que
+no aplica a Python 3 y que está desactivada en el perfil. La regla `ipython:S113` («Files should end with a
+newline») está además excluida para los cuadernos: `ruff format`, obligatorio en los hooks de pre-commit,
+normaliza el código de cada celda sin salto de línea final, de modo que la regla no puede satisfacerse en un
+cuaderno formateado; la exclusión está declarada en `sonar-project.properties`.
+
+```console
+uv run pytest    # genera coverage.xml, el informe de cobertura que consume el analizador
+source ~/.config/sonar/quantfolio.env  # define SONAR_HOST_URL y SONAR_TOKEN (nunca se versionan)
+sonar-scanner    # analiza src/ + notebooks/ + tests/ y falla si el quality gate no está en verde
+```
+
+La configuración del proyecto vive en [`sonar-project.properties`](sonar-project.properties); la URL del servidor
+y el token de análisis se pasan por entorno para no versionar secretos.
+
+### Integración continua del análisis
+
+El flujo [`sonarqube.yml`](.github/workflows/sonarqube.yml) **depende** del flujo de CI: solo se lanza tras un
+`push` correcto a `main` (nunca en *pull requests*, para no exponer credenciales a código sin revisar),
+reutiliza el `coverage.xml` que CI acaba de publicar y analiza exactamente esa revisión con `fetch-depth: 0`.
+
+El servidor SonarQube vive en la red Tailscale del equipo, así que el flujo se une a ella con
+`tailscale/github-action` creando un nodo efímero etiquetado `tag:ci` (se elimina al terminar el trabajo). En
+Tailscale hacen falta la etiqueta `tag:ci` con su `tagOwners` y una regla de acceso que la autorice hacia el
+servicio `svc:sonar` en el puerto 443. En GitHub, el repositorio necesita estos ajustes, que nunca se versionan:
+
+| Nombre | Tipo | Contenido |
+|---|---|---|
+| `TS_OAUTH_CLIENT_ID` | secreto | ID de un cliente OAuth de Tailscale con ámbito `auth_keys` y la etiqueta `tag:ci` |
+| `TS_OAUTH_SECRET` | secreto | secreto del mismo cliente OAuth |
+| `SONAR_TOKEN` | secreto | token de análisis del proyecto `quantfolio` |
+| `SONAR_HOST_URL` | variable | URL tailnet de SonarQube (`https://sonar.<tailnet>.ts.net`) |
+
+Cuando el *quality gate* no está en verde, el paso del escáner falla (por `sonar.qualitygate.wait=true`) y el
+flujo queda en rojo. Además, el flujo escribe siempre un resumen en la página del *run* (estado del *gate* con
+sus condiciones, incidencias abiertas por regla y por fichero, cobertura y duplicación) y sube el artefacto
+`sonar-report` con `report-task.txt` (tarea de proceso y enlace al *dashboard*) y `gate-summary.json`.
 
 ## Limitaciones y advertencias
 
