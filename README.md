@@ -167,16 +167,22 @@ algunos mercados) — una limitación consciente y documentada en lugar de un co
 ## Simulación de Monte Carlo
 
 El motor modela el valor de la cartera (o el precio de un activo) como un **movimiento browniano geométrico**
-(GBM) discreto por sesiones de bolsa, con la parametrización documentada en `docs/geometric-brownian-motion.md`:
+(GBM) discreto por sesiones de bolsa, parametrizado con la **deriva del logaritmo** $m$ (rentabilidad
+logarítmica media anualizada) y la volatilidad anualizada $\sigma$:
 
-$$S_t = S_0 \exp\left((\mu - \tfrac{1}{2}\sigma^2)t + \sigma W_t\right)$$
+$$S_t = S_0 \exp\left(m t + \sigma W_t\right)$$
+
+Con esta forma, los caminos simulados reproducen la deriva logarítmica estimada. Es equivalente a la
+parametrización clásica de `docs/geometric-brownian-motion.md`,
+$S_t = S_0 \exp\left((\mu - \tfrac{1}{2}\sigma^2)t + \sigma W_t\right)$, con
+$\mu = m + \tfrac{1}{2}\sigma^2$ la deriva del proceso de precios; el precio esperado crece a $m + \tfrac{1}{2}\sigma^2$ anual.
 
 | Parámetro (`MonteCarloParameters`) | Significado | Valor por defecto |
 |---|---|---|
 | `n_paths` | número de trayectorias | 1 000 |
 | `horizon` | sesiones simuladas | 252 |
 | `initial_value` | valor de partida | último precio (activo) / 10 000 (cartera) |
-| `return_assumption` | deriva anualizada del logaritmo, $\mu$ | estimación histórica |
+| `return_assumption` | deriva anualizada del logaritmo, $m$ | estimación histórica |
 | `volatility_assumption` | volatilidad anualizada, $\sigma$ | estimación histórica |
 | `seed` | semilla del generador | `None` (aleatorio) |
 
