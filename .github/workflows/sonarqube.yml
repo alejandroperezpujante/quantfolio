@@ -1,9 +1,15 @@
-# Strict SonarQube analysis of the main branch.
+# Strict SonarQube analysis of every revision CI validates.
 #
-# This workflow depends on `CI`: it only runs after a successful push to main and
-# reuses the coverage report CI produced, so the analysed revision is the one CI
-# already validated. Pull requests never reach it — the tailnet and SonarQube
-# credentials stay away from unreviewed code.
+# This reusable workflow is invoked by `ci.yml` after the `Quality gates` job
+# (never directly on an event, so a PR check cannot hang waiting for reports
+# that were never produced). It downloads the coverage and JUnit reports the
+# test job published, joins the team tailnet as an ephemeral `tag:ci` node and
+# runs the scanner against the analysed revision; `sonar.qualitygate.wait=true`
+# makes the job fail when the `Quantfolio Strict` gate is not green.
+#
+# It then leaves traceable evidence: the quality gate with all its conditions,
+# the open issues, the scanner's compute-engine task and the dashboard link are
+# written to the step summary and uploaded as the `sonar-report` artifact.
 #
 # Required repository configuration:
 #   secrets:   TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET — Tailscale OAuth client (tag:ci)
@@ -13,61 +19,63 @@
 name: SonarQube
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      revision:
+        description: Commit SHA that is being analysed (recorded on the analysis).
+        required: true
+        type: string
+    secrets:
+      TS_OAUTH_CLIENT_ID:
+        description: Tailscale OAuth client id with the tag:ci scope.
+        required: true
+      TS_OAUTH_SECRET:
+        description: Secret of the same Tailscale OAuth client.
+        required: true
+      SONAR_TOKEN:
+        description: SonarQube analysis token of the quantfolio project.
+        required: true
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   analysis:
     name: Strict analysis
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       UV_FROZEN: "1"
       SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      REVISION: ${{ inputs.revision }}
     steps:
       - name: Check out the analysed revision
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ inputs.revision }}
           # Full history so the analyser can blame lines and detect new code.
           fetch-depth: 0
 
-      - name: Download the coverage report from CI
-        if: github.event_name == 'workflow_run'
+      - name: Download the test report from the quality job
         uses: actions/download-artifact@v8
         with:
-          name: coverage
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: test-report
+          path: test-report
 
       - name: Install uv
-        if: github.event_name == 'workflow_dispatch'
         uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.14"
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Tests + coverage
-        if: github.event_name == 'workflow_dispatch'
+      - name: Check the quality reports are available
         run: |
-          uv sync --frozen
-          uv run pytest
+          test -f test-report/coverage.xml
+          test -f test-report/junit.xml
+          python3 -c "import xml.etree.ElementTree as ET; ET.parse('test-report/junit.xml'); ET.parse('test-report/coverage.xml')"
+          cp test-report/coverage.xml coverage.xml
+          cp test-report/junit.xml junit.xml
 
       - name: Connect to the tailnet
         uses: tailscale/github-action@v4
@@ -82,12 +90,15 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # Record the analysed revision and fail the job when the strict
+          # quality gate is not green (sonar.qualitygate.wait=true).
+          args: -Dsonar.scm.revision=${{ inputs.revision }}
 
       - name: Report the quality gate
         if: always()
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           python3 - <<'PY'
           import base64
@@ -97,19 +108,19 @@ jobs:
           import urllib.error
           import urllib.parse
           import urllib.request
-          from collections import Counter
 
           BASE = os.environ["SONAR_HOST_URL"].rstrip("/")
           AUTH = "Basic " + base64.b64encode(f"{os.environ['SONAR_TOKEN']}:".encode()).decode()
           PROJECT = "quantfolio"
           DASHBOARD = f"{BASE}/dashboard?id={PROJECT}"
+          REVISION = os.environ["REVISION"]
           OUT = pathlib.Path("sonar-report")
           OUT.mkdir(exist_ok=True)
           SUMMARY = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
           METRICS = (
-              "coverage,branch_coverage,line_coverage,duplicated_lines_density,"
-              "violations,bugs,vulnerabilities,code_smells,security_hotspots,"
-              "reliability_rating,security_rating,sqale_rating"
+              "coverage,branch_coverage,duplicated_lines_density,violations,bugs,"
+              "vulnerabilities,code_smells,security_hotspots,reliability_rating,"
+              "security_rating,sqale_rating,ncloc"
           )
 
           def get(path, **params):
@@ -125,10 +136,33 @@ jobs:
           lines = [
               "## SonarQube analysis",
               "",
-              f"Commit `{os.environ.get('REVISION', '')[:12]}` — "
-              f"[dashboard]({DASHBOARD})",
+              f"Commit `{REVISION[:12]}` — [dashboard]({DASHBOARD})",
           ]
-          report = {"dashboard_url": DASHBOARD}
+          report = {"dashboard_url": DASHBOARD, "revision": REVISION}
+
+          task = pathlib.Path(".scannerwork/report-task.txt")
+          if task.exists():
+              report["ce_task"] = dict(
+                  line.split("=", 1) for line in task.read_text().splitlines() if "=" in line
+              )
+              report["ce_task_id"] = report["ce_task"].get("ceTaskId")
+          if report.get("ce_task_id"):
+              try:
+                  task_info = get("/api/ce/task", id=report["ce_task_id"])["task"]
+                  report["ce_status"] = task_info.get("status")
+                  report["analysis_id"] = task_info.get("analysisId")
+              except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
+                  lines += ["", f"> Task details unavailable: {exc}"]
+          status_note = f" — status `{report['ce_status']}`" if report.get("ce_status") else ""
+          analysis_note = (
+              f", analysis `{report['analysis_id']}`" if report.get("analysis_id") else ""
+          )
+          lines += [
+              "",
+              f"Compute-engine task `{report.get('ce_task_id', '?')}`"
+              f"{status_note}{analysis_note}.",
+          ]
+
           try:
               gate = get("/api/qualitygates/project_status", projectKey=PROJECT)["projectStatus"]
               measures = {
@@ -137,27 +171,33 @@ jobs:
                       "/api/measures/component", component=PROJECT, metricKeys=METRICS
                   )["component"]["measures"]
               }
-              issues, page = [], 1
-              while True:
-                  payload = get(
-                      "/api/issues/search", componentKeys=PROJECT, resolved="false", ps=500, p=page
-                  )
-                  issues.extend(payload["issues"])
-                  if page * 500 >= payload["total"]:
-                      break
-                  page += 1
+              payload = get(
+                  "/api/issues/search",
+                  componentKeys=PROJECT,
+                  resolved="false",
+                  facets="types,severities",
+                  ps=100,
+              )
+              issues = payload["issues"]
               report.update(
-                  gate=gate,
+                  gate_status=gate["status"],
+                  gate_conditions=[
+                      {
+                          "metric_key": condition["metricKey"],
+                          "comparator": condition.get("comparator"),
+                          "threshold": condition.get("errorThreshold"),
+                          "actual": condition.get("actualValue"),
+                          "status": condition["status"],
+                      }
+                      for condition in gate["conditions"]
+                  ],
                   measures=measures,
-                  issues_total=len(issues),
-                  issues_by_rule=dict(Counter(issue["rule"] for issue in issues)),
-                  issues_by_file=dict(
-                      Counter(issue["component"].split(":")[-1] for issue in issues)
-                  ),
+                  issues_total=payload["total"],
               )
               lines += [
                   "",
-                  f"**Quality gate**: {'PASSED' if gate['status'] == 'OK' else 'FAILED'}",
+                  f"**Quality gate `Quantfolio Strict`**: "
+                  f"{'PASSED' if gate['status'] == 'OK' else 'FAILED'}",
                   "",
                   "| Condition | Actual | Threshold | Status |",
                   "|---|---|---|---|",
@@ -171,36 +211,48 @@ jobs:
                   )
               lines += [
                   "",
-                  f"Open issues: **{len(issues)}** (bugs {measures.get('bugs', '?')}, "
+                  f"Open issues: **{payload['total']}** (bugs {measures.get('bugs', '?')}, "
                   f"vulnerabilities {measures.get('vulnerabilities', '?')}, "
                   f"code smells {measures.get('code_smells', '?')})",
                   "",
                   f"Coverage {measures.get('coverage', '?')} % "
                   f"(branch {measures.get('branch_coverage', '?')} %), "
-                  f"duplicated lines {measures.get('duplicated_lines_density', '?')} %",
+                  f"duplicated lines {measures.get('duplicated_lines_density', '?')} %.",
               ]
-              for title, key in (
-                  ("Issues by rule", "issues_by_rule"),
-                  ("Issues by file", "issues_by_file"),
-              ):
-                  counts = report[key]
+              for facet in payload.get("facets", []):
+                  counts = {
+                      bucket["val"]: bucket["count"]
+                      for bucket in facet["values"]
+                      if bucket["count"]
+                  }
                   if not counts:
                       continue
-                  lines += ["", f"### {title}", "", "| Item | Count |", "|---|---|"]
-                  for item, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:15]:
+                  lines += ["", f"### Issues by {facet['property']}", "", "| Item | Count |", "|---|---|"]
+                  for item, count in sorted(
+                      counts.items(), key=lambda pair: (-pair[1], pair[0])
+                  )[:15]:
                       lines.append(f"| `{item}` | {count} |")
+              if issues:
+                  lines += [
+                      "",
+                      "### Open issues",
+                      "",
+                      "| File | Line | Severity | Rule | Message |",
+                      "|---|---:|---|---|---|",
+                  ]
+                  for issue in issues[:20]:
+                      message = issue.get("message", "").replace("|", "\\|")[:160]
+                      lines.append(
+                          f"| `{issue['component'].split(':', 1)[-1]}` | {issue.get('line', '-')} "
+                          f"| {issue.get('severity', '-')} | `{issue['rule']}` | {message} |"
+                      )
           except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
               lines += ["", f"> Reporting failed: {exc}"]
 
-          task = pathlib.Path(".scannerwork/report-task.txt")
-          if task.exists():
-              report["ce_task"] = dict(
-                  line.split("=", 1) for line in task.read_text().splitlines() if "=" in line
-              )
-          SUMMARY.write_text("\n".join(lines) + "\n", encoding="utf-8")
           (OUT / "gate-summary.json").write_text(
               json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
           )
+          SUMMARY.write_text("\n".join(lines) + "\n", encoding="utf-8")
           print("\n".join(lines))
           PY
 

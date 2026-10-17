@@ -50,18 +50,30 @@ new-style-classes and, for notebooks only, `ipython:S113`, both documented in th
 and new code).
 
 ```console
-uv run pytest          # writes coverage.xml, consumed by the analyzer
+uv run pytest          # writes coverage.xml and junit.xml, consumed by the analyzer
 source ~/.config/sonar/quantfolio.env  # SONAR_HOST_URL + SONAR_TOKEN (never committed)
 sonar-scanner          # analyzes src/ + notebooks/ + tests/; fails when the gate is not green
 ```
 
 `sonar-project.properties` holds the project settings; server URL and token come from the environment.
 
-CI: `.github/workflows/sonarqube.yml` depends on the `CI` workflow — it only runs after a successful push to
-`main` (never for pull requests) and reuses the `coverage.xml` artifact CI published. It joins the tailnet as an
-ephemeral `tag:ci` node. Required repository secrets/variables: `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`
-(Tailscale OAuth client), `SONAR_TOKEN` (secret) and `SONAR_HOST_URL` (variable). Keep those names in sync if
-the workflow changes.
+CI: `.github/workflows/ci.yml` runs on every pull request and on every push to `main`. Its `Quality gates` job
+runs the five local gates and uploads the `test-report` artifact (`coverage.xml`, `junit.xml`,
+`test-report/test-summary.json`); the reusable `.github/workflows/sonarqube.yml` is then called with those
+reports, joins the tailnet as an ephemeral `tag:ci` node and fails the run when the strict quality gate is not
+green. Required repository secrets/variables: `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET` (Tailscale OAuth
+client), `SONAR_TOKEN` (secret) and `SONAR_HOST_URL` (variable); the three secrets must also exist as Dependabot
+secrets so its pull requests can run the analysis. Keep those names in sync if the workflows change.
+
+## The `main` branch is protected
+
+Direct pushes to `main` are rejected for everyone, administrators included: every change reaches the branch
+through a pull request whose required status checks — `Quality gates` and `Strict analysis` — must pass on the
+exact revision being merged (branch protection also requires the branch to be up to date with `main`). No
+approving review is required, so either contributor can merge their own pull request once both checks are
+green. Every run leaves evidence: a step summary, downloadable artifacts (`test-report`, `sonar-report`) and a
+summary comment on the pull request. Never use `git push origin main`; open a branch and a pull request
+instead.
 
 ## Conventions
 

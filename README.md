@@ -221,7 +221,13 @@ uv run pre-commit run --all-files  # los mismos hooks que CI
 La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y cubre validaciones,
 limpieza, alineación, caché, simulaciones y generación de informes. GitHub Actions ejecuta los mismos cinco
 controles en cada *pull request* y en cada `push` a `main` (flujo [`ci.yml`](.github/workflows/ci.yml)) y
-publica `coverage.xml` como artefacto del *run*.
+publica la evidencia de cada ejecución: un resumen en la página del *run* y el artefacto `test-report` con
+`coverage.xml`, `junit.xml` y `test-summary.json`. En los *pull requests* se añade además un comentario con la
+evidencia consolidada de las pruebas y del análisis de calidad. La rama `main` está protegida: los `push`
+directos están rechazados —también para la administración—, toda contribución llega mediante un *pull request*
+y sus dos comprobaciones obligatorias, `Quality gates` y `Strict analysis`, deben pasar sobre la revisión
+exacta que se fusiona. No se exige revisión aprobatoria, así que cada autor puede fusionar su propio *pull
+request* una vez que ambas comprobaciones están en verde.
 
 ### Análisis estático con SonarQube
 
@@ -236,7 +242,7 @@ normaliza el código de cada celda sin salto de línea final, de modo que la reg
 cuaderno formateado; la exclusión está declarada en `sonar-project.properties`.
 
 ```console
-uv run pytest    # genera coverage.xml, el informe de cobertura que consume el analizador
+uv run pytest    # genera coverage.xml y junit.xml, los informes que consume el analizador
 source ~/.config/sonar/quantfolio.env  # define SONAR_HOST_URL y SONAR_TOKEN (nunca se versionan)
 sonar-scanner    # analiza src/ + notebooks/ + tests/ y falla si el quality gate no está en verde
 ```
@@ -246,9 +252,13 @@ y el token de análisis se pasan por entorno para no versionar secretos.
 
 ### Integración continua del análisis
 
-El flujo [`sonarqube.yml`](.github/workflows/sonarqube.yml) **depende** del flujo de CI: solo se lanza tras un
-`push` correcto a `main` (nunca en *pull requests*, para no exponer credenciales a código sin revisar),
-reutiliza el `coverage.xml` que CI acaba de publicar y analiza exactamente esa revisión con `fetch-depth: 0`.
+El flujo [`ci.yml`](.github/workflows/ci.yml) se ejecuta en cada *pull request* y en cada `push` a `main`. Su
+trabajo `Quality gates` ejecuta los controles locales y publica el artefacto `test-report` (`coverage.xml`,
+`junit.xml` y `test-summary.json`); a continuación se invoca el flujo reutilizable
+[`sonarqube.yml`](.github/workflows/sonarqube.yml), que descarga esos informes, analiza exactamente la revisión
+validada —la fusión del *pull request* o el `push` a `main`— con `fetch-depth: 0` y registra esa revisión en el
+análisis (`sonar.scm.revision`). Como el flujo del *pull request* solo ejecuta código de las ramas del propio
+repositorio, las credenciales nunca se exponen a código de terceros.
 
 El servidor SonarQube vive en la red Tailscale del equipo, así que el flujo se une a ella con
 `tailscale/github-action` creando un nodo efímero etiquetado `tag:ci` (se elimina al terminar el trabajo). En
@@ -262,10 +272,28 @@ servicio `svc:sonar` en el puerto 443. En GitHub, el repositorio necesita estos 
 | `SONAR_TOKEN` | secreto | token de análisis del proyecto `quantfolio` |
 | `SONAR_HOST_URL` | variable | URL tailnet de SonarQube (`https://sonar.<tailnet>.ts.net`) |
 
-Cuando el *quality gate* no está en verde, el paso del escáner falla (por `sonar.qualitygate.wait=true`) y el
-flujo queda en rojo. Además, el flujo escribe siempre un resumen en la página del *run* (estado del *gate* con
-sus condiciones, incidencias abiertas por regla y por fichero, cobertura y duplicación) y sube el artefacto
-`sonar-report` con `report-task.txt` (tarea de proceso y enlace al *dashboard*) y `gate-summary.json`.
+Los tres secretos deben existir además como secretos de Dependabot, de modo que sus *pull requests* también
+pasen el análisis. Cuando el *quality gate* no está en verde, el paso del escáner falla (por
+`sonar.qualitygate.wait=true`) y el flujo queda en rojo.
+
+### Evidencia de cada ejecución
+
+Cada ejecución deja rastro verificable de qué se comprobó y sobre qué revisión:
+
+- **Resumen del *run***: el trabajo de pruebas publica commit, cobertura y desglose de la suite; el análisis
+  publica el estado del *quality gate* con todas sus condiciones, las incidencias abiertas por regla y fichero,
+  la cobertura, la duplicación y la tarea de proceso (identificador del análisis y enlace al *dashboard*).
+- **Artefactos descargables**: `test-report` (`coverage.xml`, `junit.xml`, `test-summary.json`) y `sonar-report`
+  (`report-task.txt` y `gate-summary.json`), enlazados desde la página del *run*.
+- **Comentario en el *pull request***: un comentario se actualiza con la evidencia consolidada —commit, estado de
+  ambas comprobaciones, cobertura, recuento de pruebas, estado del *quality gate* y enlace al *dashboard*— cada
+  vez que se publica una revisión nueva.
+- **Análisis indexado en SonarQube**: el informe JUnit queda registrado en el servidor (`sonar.python.xunit.reportPath`),
+  junto a la cobertura y a la revisión exacta analizada.
+
+La protección de la rama `main` exige que `Quality gates` y `Strict analysis` terminen en verde sobre la revisión
+que se va a fusionar; el creador del *pull request* puede fusionarlo él mismo porque no se exige revisión
+aprobatoria.
 
 ## Limitaciones y advertencias
 
