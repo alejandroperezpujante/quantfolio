@@ -79,10 +79,14 @@ instead.
 
 Patch and minor Dependabot updates arm auto-merge themselves (`.github/workflows/dependabot-automerge.yml`):
 once `Quality gates` and `Strict analysis` are green on the revision, they merge without a human. Any pull request
-whose highest change is a major version is never armed and stays open for review. After every merge into `main` the
-workflow updates the branches of the armed pull requests that fell behind, because branch protection requires
-`main` to be up to date; it also repeats that sweep hourly, because a merge that the workflow armed does not
-trigger a `push` run.
+whose highest change is a major version is never armed — and one armed earlier is disarmed if a later push reclassifies
+it as major — so majors stay open for review. After every merge into `main` the workflow asks Dependabot to rebase the
+armed pull requests that fell behind, and repeats that sweep hourly, because a merge that the workflow armed does not
+trigger a `push` run. The rebase has to be Dependabot's own push: GitHub starts no workflow runs for a push made with
+`GITHUB_TOKEN`, so a branch updated through the API would never receive its required checks. One consequence follows
+from that: a commit that reaches `main` through an armed merge is not re-validated by `ci.yml` and not re-analysed by
+SonarQube, because the push that carries it is the Actions token's; the gate that counts is the one on the pull
+request revision.
 
 ## Conventions
 
