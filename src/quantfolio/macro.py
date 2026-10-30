@@ -1,18 +1,24 @@
-"""Macroeconomic time series from FRED."""
+"""Macroeconomic time series from FRED.
+
+The series are downloaded from ALFRED, FRED's archival endpoint: it serves
+FRED's vintages and, when no vintage is requested, the same latest values
+FRED serves today.
+"""
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from urllib.parse import urlencode
 
 import pandas as pd
 
 from quantfolio.models import clean_numeric_series
+from quantfolio.sources.base import DateLike, naive_timestamp
 
-if TYPE_CHECKING:
-    from quantfolio.sources.base import DateLike
-
-FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+#: Base URL of the keyless ALFRED CSV export. ALFRED is FRED's archival
+#: endpoint: it serves FRED's vintages and, when no vintage is requested,
+#: the same latest values FRED serves today.
+ALFRED_CSV_URL = "https://alfred.stlouisfed.org/graph/alfredgraph.csv"
 
 #: Minimum number of columns expected in the FRED CSV export (date and value).
 FRED_CSV_COLUMNS = 2
@@ -82,7 +88,7 @@ class MacroSeries:
 
 
 class FredMacroSource:
-    """Client for the keyless FRED CSV export endpoint."""
+    """Client for the keyless ALFRED CSV export endpoint (FRED's archive)."""
 
     @property
     def name(self) -> str:
@@ -94,13 +100,17 @@ class FredMacroSource:
         series_id: str,
         start: DateLike | None = None,
         end: DateLike | None = None,
+        as_of: DateLike | None = None,
     ) -> MacroSeries:
         """Download a macroeconomic series.
 
         Args:
             series_id: FRED identifier, for example ``"DGS10"`` or ``"CPIAUCSL"``.
             start: First observation date (inclusive).
-            end: Last observation date (inclusive).
+            end: Last observation date (inclusive). Note: still inclusive in
+                this task; a later change makes it exclusive.
+            as_of: Vintage date; the values are those published on that date
+                (point-in-time, ALFRED). Defaults to the latest vintage.
 
         Returns:
             The normalized macro series.
@@ -118,8 +128,10 @@ class FredMacroSource:
             params["cosd"] = pd.Timestamp(start).strftime("%Y-%m-%d")
         if end is not None:
             params["coed"] = pd.Timestamp(end).strftime("%Y-%m-%d")
+        if as_of is not None:
+            params["vintage_date"] = naive_timestamp(as_of).strftime("%Y-%m-%d")
         try:
-            data = pd.read_csv(f"{FRED_CSV_URL}?{urlencode(params)}", dtype=str)
+            data = pd.read_csv(f"{ALFRED_CSV_URL}?{urlencode(params)}", dtype=str)
         except (OSError, ValueError) as exc:
             msg = f"No se pudo descargar la serie {identifier} de FRED: {exc}"
             raise ValueError(msg) from exc
@@ -128,6 +140,10 @@ class FredMacroSource:
             raise ValueError(msg)
         date_column = data.columns[0]
         value_column = data.columns[1]
+        if as_of is not None:
+            vintage: pd.Timestamp | None = naive_timestamp(as_of).normalize()
+        else:
+            vintage = _parse_vintage_column(value_column)
         dates = pd.to_datetime(data[date_column], errors="coerce")
         values = cast(
             "pd.Series[float]",
@@ -138,4 +154,9 @@ class FredMacroSource:
             ),
         )
         values = values[values.index.notna()]
-        return MacroSeries(series_id=identifier, values=values, source=self.name)
+        return MacroSeries(
+            series_id=identifier,
+            values=values,
+            source=self.name,
+            vintage_date=vintage,
+        )
