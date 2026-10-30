@@ -31,6 +31,12 @@ period, the calendar timing is part of the background.
 - Releases lag the reference period and are revised: BLS publishes the CPI around the middle of the following month; BEA
   issues GDP in successive (advance, preliminary, third) estimates; official release calendars list forthcoming dates.
 
+When the toolkit ingests these series it goes through ALFRED's archival CSV export, FRED's vintage database. Each
+`MacroSeries` records the vintage it comes from in its `vintage_date` field, and `get_series(..., as_of=...)` returns the
+values actually published as of a past date. Revisions and release lags therefore cannot leak into historical analysis
+(the look-ahead bias these would otherwise introduce is avoided), and observations not yet released at the requested
+vintage remain absent from the series.
+
 ## Sources
 
 - <https://www.ecb.europa.eu/stats/macroeconomic_and_sectoral/hicp/html/index.en.html> (accessed 2026-10-01)
