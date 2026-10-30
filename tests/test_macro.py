@@ -122,6 +122,33 @@ def test_fred_source_vintage_falls_back_to_none_on_unparsable_column(
     assert series.vintage_date is None
 
 
+def test_fred_source_rejects_vintage_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A response vintage that differs from the requested as_of is rejected."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2026-10-28"], "DGS10_20261030": [5.05]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    source = FredMacroSource()
+    with pytest.raises(ValueError, match=r"2026-10-30.*2099-01-01"):
+        source.get_series("DGS10", as_of="2099-01-01")
+
+
+def test_fred_source_stamps_requested_vintage_when_suffix_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a parsable suffix, the requested as_of is the only provenance left."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2025-03-13"], "DGS10": [4.27]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10", as_of="2025-03-15")
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
+
+
 def test_fred_source_vintage_preserves_release_gaps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

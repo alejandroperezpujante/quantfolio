@@ -45,6 +45,44 @@ def _parse_vintage_column(value_column: str) -> pd.Timestamp | None:
         return None
 
 
+def _resolve_vintage(
+    identifier: str,
+    value_column: str,
+    requested: pd.Timestamp | None,
+) -> pd.Timestamp | None:
+    """Resolve the vintage to stamp, validating it against the requested date.
+
+    Args:
+        identifier: FRED identifier, used in the error message.
+        value_column: Column name of the CSV export, for example
+            ``"CPIAUCSL_20250315"``.
+        requested: Vintage the caller asked for, or ``None`` when no ``as_of``
+            was given.
+
+    Returns:
+        The vintage the response actually carries: the parsed suffix when the
+        column names one, the requested date otherwise. ``None`` means
+        unspecified.
+
+    Raises:
+        ValueError: If the endpoint served a vintage other than the requested
+            one. ALFRED clamps out-of-range requests to its latest vintage, so
+            a mismatch means the stamped vintage would not be the requested
+            one.
+
+    """
+    parsed = _parse_vintage_column(value_column)
+    if requested is None:
+        return parsed
+    if parsed is not None and parsed != requested:
+        msg = (
+            f"ALFRED devolvió el vintage {parsed:%Y-%m-%d} en lugar del "
+            f"solicitado {requested:%Y-%m-%d} para la serie {identifier}."
+        )
+        raise ValueError(msg)
+    return parsed if parsed is not None else requested
+
+
 @dataclass
 class MacroSeries:
     """A macroeconomic indicator downloaded from FRED.
@@ -109,13 +147,17 @@ class FredMacroSource:
             start: First observation date (inclusive).
             end: Last observation date (exclusive).
             as_of: Vintage date; the values are those published on that date
-                (point-in-time, ALFRED). Defaults to the latest vintage.
+                (point-in-time, ALFRED). Defaults to the latest vintage. The
+                vintage the endpoint actually serves must match this date; a
+                mismatch (for example, ALFRED clamping an out-of-range
+                request to its latest vintage) raises ``ValueError``.
 
         Returns:
             The normalized macro series.
 
         Raises:
-            ValueError: If the identifier is empty or the endpoint returns no usable data.
+            ValueError: If the identifier is empty, the endpoint returns no
+                usable data, or the served vintage differs from ``as_of``.
 
         """
         identifier = series_id.strip().upper() if isinstance(series_id, str) else ""
@@ -127,10 +169,10 @@ class FredMacroSource:
             params["cosd"] = pd.Timestamp(start).strftime("%Y-%m-%d")
         if end is not None:
             params["coed"] = pd.Timestamp(end).strftime("%Y-%m-%d")
-        vintage: pd.Timestamp | None = None
+        requested: pd.Timestamp | None = None
         if as_of is not None:
-            vintage = naive_timestamp(as_of)
-            params["vintage_date"] = vintage.strftime("%Y-%m-%d")
+            requested = naive_timestamp(as_of).normalize()
+            params["vintage_date"] = requested.strftime("%Y-%m-%d")
         try:
             data = pd.read_csv(f"{ALFRED_CSV_URL}?{urlencode(params)}", dtype=str)
         except (OSError, ValueError) as exc:
@@ -141,10 +183,7 @@ class FredMacroSource:
             raise ValueError(msg)
         date_column = data.columns[0]
         value_column = data.columns[1]
-        if vintage is not None:
-            vintage = vintage.normalize()
-        else:
-            vintage = _parse_vintage_column(value_column)
+        vintage = _resolve_vintage(identifier, value_column, requested)
         dates = pd.to_datetime(data[date_column], errors="coerce")
         values = cast(
             "pd.Series[float]",
