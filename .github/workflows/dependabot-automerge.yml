@@ -14,6 +14,11 @@ on:
   push:
     branches: [main]
 
+# Neither job checks the repository out, so the GitHub CLI needs the repository
+# spelled out explicitly; without it every `gh` call fails outside a work tree.
+env:
+  GH_REPO: ${{ github.repository }}
+
 jobs:
   classify:
     name: Arm auto-merge
