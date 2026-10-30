@@ -5,8 +5,46 @@ from typing import cast
 import pandas as pd
 import pytest
 
-from quantfolio.macro import FRED_CSV_URL, FredMacroSource, MacroSeries
+from quantfolio.macro import (
+    FRED_CSV_URL,
+    FredMacroSource,
+    MacroSeries,
+    _parse_vintage_column,
+)
 from tests.helpers import TRADING_DATES
+
+
+def test_macro_series_defaults_to_unspecified_vintage() -> None:
+    """MacroSeries without an explicit vintage records none."""
+    values = pd.Series([1.0], index=TRADING_DATES[:1])
+    series = MacroSeries(series_id="DGS10", values=values)
+    assert series.vintage_date is None
+
+
+def test_macro_series_stores_vintage_date() -> None:
+    """MacroSeries keeps the vintage the values represent."""
+    values = pd.Series([1.0], index=TRADING_DATES[:1])
+    series = MacroSeries(series_id="DGS10", values=values, vintage_date=pd.Timestamp("2025-03-15"))
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
+
+
+def test_parse_vintage_column_reads_eight_digit_suffix() -> None:
+    """ALFRED value columns embed the vintage as a YYYYMMDD suffix."""
+    assert _parse_vintage_column("CPIAUCSL_20250315") == pd.Timestamp("2025-03-15")
+
+
+@pytest.mark.parametrize(
+    "value_column",
+    [
+        "CPIAUCSL",
+        "CPIAUCSL_2025031",
+        "CPIAUCSL_abcdabcd",
+        "CPIAUCSL_20251315",
+    ],
+)
+def test_parse_vintage_column_rejects_missing_or_malformed_suffix(value_column: str) -> None:
+    """Columns without a strict YYYYMMDD suffix yield no vintage."""
+    assert _parse_vintage_column(value_column) is None
 
 
 def test_fred_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
