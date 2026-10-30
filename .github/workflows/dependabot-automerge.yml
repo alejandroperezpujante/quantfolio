@@ -7,12 +7,21 @@ name: Dependabot auto-merge
 #
 # Dependabot-triggered runs receive a read-only GITHUB_TOKEN, so the `permissions`
 # block below is what makes arming possible at all.
+#
+# A merge that this workflow armed is attributed to the Actions token, and GitHub
+# does not start workflows for pushes made with that token: the `push` run below
+# only fires for merges made by a person. The janitor therefore also runs on a
+# schedule, which is what frees the pull requests that fell behind after an
+# automatic merge.
 
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
   push:
     branches: [main]
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
 
 # Neither job checks the repository out, so the GitHub CLI needs the repository
 # spelled out explicitly; without it every `gh` call fails outside a work tree.
@@ -61,7 +70,7 @@ jobs:
 
   drain:
     name: Keep the queue moving
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write

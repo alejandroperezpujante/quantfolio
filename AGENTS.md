@@ -81,7 +81,8 @@ Patch and minor Dependabot updates arm auto-merge themselves (`.github/workflows
 once `Quality gates` and `Strict analysis` are green on the revision, they merge without a human. Any pull request
 whose highest change is a major version is never armed and stays open for review. After every merge into `main` the
 workflow updates the branches of the armed pull requests that fell behind, because branch protection requires
-`main` to be up to date.
+`main` to be up to date; it also repeats that sweep hourly, because a merge that the workflow armed does not
+trigger a `push` run.
 
 ## Conventions
 
