@@ -146,6 +146,68 @@ def test_fred_source_vintage_preserves_release_gaps(
     assert series.values.index.max() == pd.Timestamp("2025-02-01")  # noqa: PD011
 
 
+@pytest.mark.parametrize(
+    ("end"),
+    [
+        "2025-01-10",
+        dt.date(2025, 1, 10),
+        pd.Timestamp("2025-01-10", tz="Europe/Madrid"),
+    ],
+)
+def test_fred_source_end_is_exclusive(
+    monkeypatch: pytest.MonkeyPatch, end: str | dt.date | pd.Timestamp
+) -> None:
+    """The end boundary is excluded, like the price sources, whatever its date type."""
+
+    def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
+        assert dtype is str
+        assert "coed=2025-01-10" in url
+        return pd.DataFrame(
+            {
+                "observation_date": ["2025-01-09", "2025-01-10"],
+                "DGS10_20250315": [4.27, 4.30],
+            }
+        )
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10", "2025-01-02", end)
+    assert list(series.values) == [4.27]
+
+
+def test_fred_source_end_between_observations_keeps_prior(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An end date between monthly observations keeps the earlier ones."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame(
+            {
+                "observation_date": ["2025-01-01", "2025-02-01"],
+                "CPIAUCSL_20250315": [319.086, 319.775],
+            }
+        )
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("CPIAUCSL", "2025-01-01", "2025-02-15")
+    assert list(series.values) == [319.086, 319.775]
+
+
+def test_fred_source_rejects_windows_without_observations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A window that trims to nothing raises the download error, not an empty series."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2025-01-02"], "DGS10_20250315": [4.25]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    source = FredMacroSource()
+    with pytest.raises(ValueError, match="No se han encontrado"):
+        source.get_series("DGS10", "2025-01-02", "2025-01-02")
+
+
 def test_fred_source_rejects_empty_payloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

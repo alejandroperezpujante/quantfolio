@@ -20,7 +20,7 @@ from quantfolio.sources.base import DateLike, naive_timestamp
 #: the same latest values FRED serves today.
 ALFRED_CSV_URL = "https://alfred.stlouisfed.org/graph/alfredgraph.csv"
 
-#: Minimum number of columns expected in the FRED CSV export (date and value).
+#: Minimum number of columns expected in the ALFRED CSV export (date and value).
 FRED_CSV_COLUMNS = 2
 
 
@@ -107,8 +107,7 @@ class FredMacroSource:
         Args:
             series_id: FRED identifier, for example ``"DGS10"`` or ``"CPIAUCSL"``.
             start: First observation date (inclusive).
-            end: Last observation date (inclusive). Note: still inclusive in
-                this task; a later change makes it exclusive.
+            end: Last observation date (exclusive).
             as_of: Vintage date; the values are those published on that date
                 (point-in-time, ALFRED). Defaults to the latest vintage.
 
@@ -128,8 +127,10 @@ class FredMacroSource:
             params["cosd"] = pd.Timestamp(start).strftime("%Y-%m-%d")
         if end is not None:
             params["coed"] = pd.Timestamp(end).strftime("%Y-%m-%d")
+        vintage: pd.Timestamp | None = None
         if as_of is not None:
-            params["vintage_date"] = naive_timestamp(as_of).strftime("%Y-%m-%d")
+            vintage = naive_timestamp(as_of)
+            params["vintage_date"] = vintage.strftime("%Y-%m-%d")
         try:
             data = pd.read_csv(f"{ALFRED_CSV_URL}?{urlencode(params)}", dtype=str)
         except (OSError, ValueError) as exc:
@@ -140,8 +141,8 @@ class FredMacroSource:
             raise ValueError(msg)
         date_column = data.columns[0]
         value_column = data.columns[1]
-        if as_of is not None:
-            vintage: pd.Timestamp | None = naive_timestamp(as_of).normalize()
+        if vintage is not None:
+            vintage = vintage.normalize()
         else:
             vintage = _parse_vintage_column(value_column)
         dates = pd.to_datetime(data[date_column], errors="coerce")
@@ -154,6 +155,11 @@ class FredMacroSource:
             ),
         )
         values = values[values.index.notna()]
+        if end is not None:
+            values = values[values.index < naive_timestamp(end)]
+        if values.empty:
+            msg = f"No se han encontrado datos para la serie {identifier} en FRED."
+            raise ValueError(msg)
         return MacroSeries(
             series_id=identifier,
             values=values,
