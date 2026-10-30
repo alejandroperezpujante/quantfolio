@@ -1,27 +1,73 @@
 """Tests for the FRED macro-series provider."""
 
+import datetime as dt
 from typing import cast
 
 import pandas as pd
 import pytest
 
-from quantfolio.macro import FRED_CSV_URL, FredMacroSource, MacroSeries
+from quantfolio.macro import (
+    ALFRED_CSV_URL,
+    FredMacroSource,
+    MacroSeries,
+    _parse_vintage_column,
+)
 from tests.helpers import TRADING_DATES
+
+
+def test_macro_series_defaults_to_unspecified_vintage() -> None:
+    """MacroSeries without an explicit vintage records none."""
+    values = pd.Series([1.0], index=TRADING_DATES[:1])
+    series = MacroSeries(series_id="DGS10", values=values)
+    assert series.vintage_date is None
+
+
+def test_macro_series_stores_vintage_date() -> None:
+    """MacroSeries keeps the vintage the values represent."""
+    values = pd.Series([1.0], index=TRADING_DATES[:1])
+    series = MacroSeries(series_id="DGS10", values=values, vintage_date=pd.Timestamp("2025-03-15"))
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
+
+
+def test_parse_vintage_column_reads_eight_digit_suffix() -> None:
+    """ALFRED value columns embed the vintage as a YYYYMMDD suffix."""
+    assert _parse_vintage_column("CPIAUCSL_20250315") == pd.Timestamp("2025-03-15")
+
+
+@pytest.mark.parametrize(
+    "value_column",
+    [
+        "CPIAUCSL",
+        "CPIAUCSL_2025031",
+        "CPIAUCSL_abcdabcd",
+        "CPIAUCSL_20251315",
+    ],
+)
+def test_parse_vintage_column_rejects_missing_or_malformed_suffix(value_column: str) -> None:
+    """Columns without a strict YYYYMMDD suffix yield no vintage."""
+    assert _parse_vintage_column(value_column) is None
+
+
+def test_parse_vintage_column_rejects_non_ascii_digits() -> None:
+    """Only ASCII digits form a vintage: ALFRED never sends other digits."""
+    arabic_indic = "\u0662\u0660\u0662\u0665\u0660\u0663\u0661\u0665"
+    assert _parse_vintage_column(f"CPIAUCSL_{arabic_indic}") is None
 
 
 def test_fred_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     """FRED CSV responses are normalized, dropping missing observations."""
 
     def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
-        assert url.startswith(FRED_CSV_URL)
+        assert url.startswith(ALFRED_CSV_URL)
         assert dtype is str
         assert "id=DGS10" in url
         assert "cosd=2025-01-02" in url
         assert "coed=2025-01-10" in url
+        assert "vintage_date" not in url
         return pd.DataFrame(
             {
                 "observation_date": ["2025-01-02", "2025-01-03", "2025-01-06"],
-                "DGS10": [4.25, ".", 4.3],
+                "DGS10_20250315": [4.25, ".", 4.3],
             }
         )
 
@@ -31,6 +77,7 @@ def test_fred_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert series.series_id == "DGS10"
     assert series.source == "FRED"
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
     assert list(series.values) == [4.25, 4.3]
 
 
@@ -40,13 +87,158 @@ def test_fred_source_allows_optional_dates(monkeypatch: pytest.MonkeyPatch) -> N
     def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
         assert url.endswith("id=CPIAUCSL")
         assert dtype is str
-        return pd.DataFrame({"observation_date": ["2025-01-01"], "CPIAUCSL": [315.0]})
+        return pd.DataFrame({"observation_date": ["2025-01-01"], "CPIAUCSL_20261030": [315.0]})
 
     monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
 
     series = FredMacroSource().get_series("CPIAUCSL")
 
     assert len(series.values) == 1
+    assert series.vintage_date == pd.Timestamp("2026-10-30")
+
+
+@pytest.mark.parametrize("as_of", ["2025-03-15", dt.date(2025, 3, 15)])
+def test_fred_source_pins_vintage_with_as_of(
+    monkeypatch: pytest.MonkeyPatch, as_of: str | dt.date
+) -> None:
+    """as_of pins the ALFRED vintage and stamps the provenance."""
+
+    def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
+        assert dtype is str
+        assert "id=DGS10" in url
+        assert "vintage_date=2025-03-15" in url
+        return pd.DataFrame({"observation_date": ["2025-03-13"], "DGS10_20250315": [4.27]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10", as_of=as_of)
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
+
+
+def test_fred_source_vintage_falls_back_to_none_on_unparsable_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A response column without a vintage suffix leaves the vintage unspecified."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2025-01-02"], "DGS10": [4.25]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10")
+    assert series.vintage_date is None
+
+
+def test_fred_source_rejects_vintage_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A response vintage that differs from the requested as_of is rejected."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2026-10-28"], "DGS10_20261030": [5.05]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    source = FredMacroSource()
+    with pytest.raises(ValueError, match=r"2026-10-30.*2099-01-01"):
+        source.get_series("DGS10", as_of="2099-01-01")
+
+
+def test_fred_source_stamps_requested_vintage_when_suffix_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a parsable suffix, the requested as_of is the only provenance left."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2025-03-13"], "DGS10": [4.27]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10", as_of="2025-03-15")
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
+
+
+def test_fred_source_vintage_preserves_release_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Observations not published at the vintage stay absent: no reindexing, no fill."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame(
+            {
+                "observation_date": ["2025-01-01", "2025-02-01"],
+                "CPIAUCSL_20250315": [319.086, 319.775],
+            }
+        )
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series(
+        "CPIAUCSL", start="2025-01-01", end="2025-03-31", as_of="2025-03-15"
+    )
+    assert len(series.values) == 2
+    # PD011 is a false positive: this accesses the MacroSeries dataclass field of
+    # that name, not the deprecated pandas Series.values.
+    assert series.values.index.max() == pd.Timestamp("2025-02-01")  # noqa: PD011
+
+
+@pytest.mark.parametrize(
+    ("end"),
+    [
+        "2025-01-10",
+        dt.date(2025, 1, 10),
+        pd.Timestamp("2025-01-10", tz="Europe/Madrid"),
+    ],
+)
+def test_fred_source_end_is_exclusive(
+    monkeypatch: pytest.MonkeyPatch, end: str | dt.date | pd.Timestamp
+) -> None:
+    """The end boundary is excluded, like the price sources, whatever its date type."""
+
+    def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
+        assert dtype is str
+        assert "coed=2025-01-10" in url
+        return pd.DataFrame(
+            {
+                "observation_date": ["2025-01-09", "2025-01-10"],
+                "DGS10_20250315": [4.27, 4.30],
+            }
+        )
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10", "2025-01-02", end)
+    assert list(series.values) == [4.27]
+
+
+def test_fred_source_end_between_observations_keeps_prior(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An end date between monthly observations keeps the earlier ones."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame(
+            {
+                "observation_date": ["2025-01-01", "2025-02-01"],
+                "CPIAUCSL_20250315": [319.086, 319.775],
+            }
+        )
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("CPIAUCSL", "2025-01-01", "2025-02-15")
+    assert list(series.values) == [319.086, 319.775]
+
+
+def test_fred_source_rejects_windows_without_observations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A window that trims to nothing raises the download error, not an empty series."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2025-01-02"], "DGS10_20250315": [4.25]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    source = FredMacroSource()
+    with pytest.raises(ValueError, match="No se han encontrado"):
+        source.get_series("DGS10", "2025-01-02", "2025-01-02")
 
 
 def test_fred_source_rejects_empty_payloads(
