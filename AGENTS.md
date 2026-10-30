@@ -75,6 +75,14 @@ green. Every run leaves evidence: a step summary, downloadable artifacts (`test-
 summary comment on the pull request. Never use `git push origin main`; open a branch and a pull request
 instead.
 
+## Dependabot auto-merge
+
+Patch and minor Dependabot updates arm auto-merge themselves (`.github/workflows/dependabot-automerge.yml`):
+once `Quality gates` and `Strict analysis` are green on the revision, they merge without a human. Any pull request
+whose highest change is a major version is never armed and stays open for review. After every merge into `main` the
+workflow updates the branches of the armed pull requests that fell behind, because branch protection requires
+`main` to be up to date.
+
 ## Conventions
 
 - Docstrings and code comments are written in **English** (Google style, as in the scaffold).
