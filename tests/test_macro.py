@@ -48,6 +48,12 @@ def test_parse_vintage_column_rejects_missing_or_malformed_suffix(value_column: 
     assert _parse_vintage_column(value_column) is None
 
 
+def test_parse_vintage_column_rejects_non_ascii_digits() -> None:
+    """Only ASCII digits form a vintage: ALFRED never sends other digits."""
+    arabic_indic = "\u0662\u0660\u0662\u0665\u0660\u0663\u0661\u0665"
+    assert _parse_vintage_column(f"CPIAUCSL_{arabic_indic}") is None
+
+
 def test_fred_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     """FRED CSV responses are normalized, dropping missing observations."""
 
