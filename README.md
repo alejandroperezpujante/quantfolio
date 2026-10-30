@@ -87,7 +87,7 @@ portfolio.plot_simulation(simulations)
 │   ├── portfolio.py         # Portfolio: pesos, alineación, métricas, informes y Monte Carlo
 │   ├── simulation.py        # motor GBM y MonteCarloParameters
 │   ├── reporting.py         # informes Markdown y visualizaciones
-│   ├── macro.py             # MacroSeries y proveedor FRED
+│   ├── macro.py             # MacroSeries y proveedor FRED vía ALFRED (vintages)
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
 ├── notebooks/               # punto de entrada reproducible (assignment.ipynb)
 ├── tests/                   # suite sin red, con dobles de proveedor
@@ -125,12 +125,18 @@ Un **cartera de inversión** es una colección de activos junto con la fracción
 |---|---|---:|---|---|
 | Yahoo Finance | `YahooFinanceSource` | acciones e índices | no | `META`, `IAG.MC`, `^GSPC`, `^IBEX` |
 | Kraken | `KrakenSource` | criptomonedas (OHLC diario) | no | `BTC/USD`, `ETHUSD` |
-| FRED | `FredMacroSource` | indicadores macro y tipos de interés | no | `DGS10`, `CPIAUCSL` |
+| FRED/ALFRED | `FredMacroSource` | indicadores macro y tipos de interés, con vintages punto-en-el-tiempo (`as_of`) | no | `DGS10`, `CPIAUCSL` |
 | Caché CSV local | `CachedPriceSource` | envoltorio sobre cualquier proveedor | no | — |
 
 Todos los proveedores de precios implementan el contrato `PriceSource` (`sources/base.py`) y devuelven objetos
 `PriceSeries` idénticos y compatibles entre sí, con independencia de la API consultada. `get_many()` permite
 descargar varias series a partir de una lista de activos (en lote, secuencial).
+
+Las descargas macro (`FredMacroSource`) usan el endpoint de **ALFRED**, el archivo de vintages de FRED: sin vintage
+solicitado sirve los mismos valores que FRED, y cada `MacroSeries` registra en su campo `vintage_date` el vintage del
+que proceden los valores. `get_series(..., as_of="AAAA-MM-DD")` devuelve los valores publicados hasta esa fecha,
+evitando el sesgo anticipado por revisiones y por el retraso de publicación de los indicadores; el parámetro `end`
+de `get_series` es exclusivo, igual que en `PriceSource`.
 
 `CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker>.csv`; el archivo se
 reutiliza mientras empiece antes de la fecha solicitada y su último dato siga vigente (margen configurable con
@@ -312,7 +318,7 @@ aprobatoria.
 | Bloque del taller | Implementación |
 |---|---|
 | Repositorio y despliegue *plug-and-play* | `pyproject.toml` + `uv.lock` (instalación con `uv sync`), README, `.gitignore`, CI. |
-| Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`) como tipología adicional. |
+| Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
 | Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados, correlaciones). |
 | Motor Monte Carlo | `Portfolio.simulate_monte_carlo()` y `PriceSeries.simulate_monte_carlo()` con `MonteCarloParameters`; `plot_simulation()`. |
 | Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; sección de validación de entradas en este README. |
