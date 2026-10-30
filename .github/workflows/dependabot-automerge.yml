@@ -3,16 +3,17 @@ name: Dependabot auto-merge
 # Patch and minor Dependabot updates arm auto-merge as soon as the pull request
 # exists; the protected branch then decides when it lands (`Quality gates` and
 # `Strict analysis` on the exact revision, branch up to date with `main`).
-# Majors are never armed and stay open for review.
+# Majors are never armed, and a pull request armed as patch/minor that later
+# becomes a major is disarmed again, so they stay open for review.
 #
 # Dependabot-triggered runs receive a read-only GITHUB_TOKEN, so the `permissions`
-# block below is what makes arming possible at all.
+# blocks below are what makes writing possible at all.
 #
-# A merge that this workflow armed is attributed to the Actions token, and GitHub
-# does not start workflows for pushes made with that token: the `push` run below
-# only fires for merges made by a person. The janitor therefore also runs on a
-# schedule, which is what frees the pull requests that fell behind after an
-# automatic merge.
+# Anything that needs to move a branch has to be pushed by Dependabot itself:
+# GitHub starts no workflow runs for a push made with GITHUB_TOKEN, so a branch
+# updated through the API would never receive its required checks and would sit
+# stuck behind the "up to date" rule for good. The janitor therefore asks
+# Dependabot to rebase instead of updating the branch.
 
 on:
   pull_request:
@@ -49,12 +50,37 @@ jobs:
         if: >-
           contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'),
           steps.metadata.outputs.update-type)
-        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_ID: ${{ github.event.pull_request.node_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            echo "Auto-merge is already armed on this pull request."
+            exit 0
+          fi
+          # `gh pr merge --auto` merges on the spot when the pull request is
+          # already mergeable; this mutation always arms and never merges.
+          gh api graphql -f query='
+            mutation($id: ID!) {
+              enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) {
+                clientMutationId
+              }
+            }' -f id="$PR_ID"
+
+      - name: Disarm an update that became a major
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            gh pr merge --disable-auto "$PR_URL" \
+              || echo "::warning::Could not disarm auto-merge on $PR_URL"
+          fi
 
       - name: Record the decision
+        if: always()
         env:
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           ARMED: >-
@@ -66,17 +92,18 @@ jobs:
           else
             verdict="left open for review"
           fi
-          echo "Dependabot update type \`$UPDATE_TYPE\`: $verdict." >> "$GITHUB_STEP_SUMMARY"
+          echo "Dependabot update type \`${UPDATE_TYPE:-unknown}\`: $verdict." >> "$GITHUB_STEP_SUMMARY"
 
   drain:
     name: Keep the queue moving
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: read
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
-      - name: Update armed Dependabot branches that fell behind
+      - name: Ask Dependabot to rebase the armed branches that fell behind
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -89,11 +116,16 @@ jobs:
                   | select(.mergeStateStatus == "BEHIND" or .mergeStateStatus == "UNKNOWN")
                   | .number' > candidates.txt
           while read -r number; do
-            head=$(gh pr view "$number" --json headRefOid --jq .headRefOid)
-            if gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch" \
-                 -F "expected_head_sha=$head" > /dev/null 2>&1; then
-              echo "- Updated #$number so it can be validated against the new \`main\`." >> "$GITHUB_STEP_SUMMARY"
+            asked=$(gh pr view "$number" --json comments \
+              --jq '[.comments[] | select(.body | startswith("@dependabot rebase"))] | last | .createdAt // ""')
+            head_at=$(gh pr view "$number" --json commits --jq '(.commits | last | .committedDate) // ""')
+            if [ -n "$asked" ] && [ "$asked" \> "$head_at" ]; then
+              echo "- #$number: already asked to rebase at \`$asked\`, still behind." >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if gh pr comment "$number" --body "@dependabot rebase" > /dev/null; then
+              echo "- #$number: asked Dependabot to rebase, so its new head gets the required checks." >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "- Left #$number as it was (nothing to update, or not updatable)." >> "$GITHUB_STEP_SUMMARY"
+              echo "- #$number: could not post the rebase request; the pull request stays as it was." >> "$GITHUB_STEP_SUMMARY"
             fi
           done < candidates.txt

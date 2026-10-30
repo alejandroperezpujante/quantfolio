@@ -138,3 +138,18 @@ Three facts the design did not account for, all found on `main` on 2026-10-30:
    the workflow landed (#12) included `dependabot/fetch-metadata` v2 → v3, so `fetch-metadata`
    reported `version-update:semver-major` for the whole group and nothing was armed. A separate run
    armed #8 (`semver-minor`), which then merged itself once both required checks were green.
+4. **`update-branch` cannot unstick a pull request.** A branch pushed with `GITHUB_TOKEN` starts no
+   workflow runs, so the updated head never receives `Quality gates` or `Strict analysis`: the
+   pull request turns `BLOCKED` and the old `BEHIND`/`UNKNOWN` filter never picked it up again. The
+   janitor now comments `@dependabot rebase`, because Dependabot pushes with its own token and that
+   `synchronize` does start the checks. Verified live on #12: the updater run at 18:52:05 was
+   followed by `CI` and `Dependabot auto-merge` runs at 18:53:21 on the new head.
+5. **`gh pr merge --auto` can merge directly.** When the pull request is already mergeable, the CLI
+   calls `mergePullRequest` instead of arming, so the workflow would merge rather than arm — and
+   claim otherwise in the summary. Arming now uses the `enablePullRequestAutoMerge` mutation, and a
+   pull request whose `update-type` turns `semver-major` on a later push is disarmed with
+   `gh pr merge --disable-auto`.
+6. **An armed merge never re-runs CI on `main`.** The push that carries it is the Actions token's,
+   so `ci.yml` and the SonarQube analysis do not run for that commit; the revision validated is the
+   pull request one. This is a deliberate consequence of using `GITHUB_TOKEN`, documented in
+   `AGENTS.md`, not an oversight.
