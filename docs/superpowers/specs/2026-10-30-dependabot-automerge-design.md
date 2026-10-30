@@ -122,3 +122,19 @@ protection being relaxed.
 - Remote, negative: the workflow must not arm anything on a non-Dependabot pull request, and must
   not touch a major bump. A major cannot be exercised until Dependabot raises one, so the guard is
   confirmed from the run summary at the first opportunity.
+
+## Amendment after the first live runs
+
+Three facts the design did not account for, all found on `main` on 2026-10-30:
+
+1. **`gh` needs a repository.** Neither job checks the code out, so every `gh` call failed with
+   `fatal: not a git repository` the first time `drain` ran. Fixed by `env: GH_REPO:
+   ${{ github.repository }}` at workflow level (#11).
+2. **A merge armed by this workflow starts no workflows.** Auto-merge enabled with `GITHUB_TOKEN`
+   makes the push to `main` on behalf of the Actions token, and GitHub does not start workflow runs
+   for those pushes. The `push` trigger therefore only covers merges made by a person, so `drain`
+   also runs hourly (`cron: "23 * * * *"`) and on `workflow_dispatch`.
+3. **The major guard holds in practice.** The first grouped Actions pull request to arrive after
+   the workflow landed (#12) included `dependabot/fetch-metadata` v2 → v3, so `fetch-metadata`
+   reported `version-update:semver-major` for the whole group and nothing was armed. A separate run
+   armed #8 (`semver-minor`), which then merged itself once both required checks were green.
