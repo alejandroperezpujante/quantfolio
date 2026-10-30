@@ -136,7 +136,9 @@ Las descargas macro (`FredMacroSource`) usan el endpoint de **ALFRED**, el archi
 solicitado sirve los mismos valores que FRED, y cada `MacroSeries` registra en su campo `vintage_date` el vintage del
 que proceden los valores. `get_series(..., as_of="AAAA-MM-DD")` devuelve los valores publicados hasta esa fecha,
 evitando el sesgo anticipado por revisiones y por el retraso de publicación de los indicadores; el parámetro `end`
-de `get_series` es exclusivo, igual que en `PriceSource`.
+de `get_series` es exclusivo, igual que en `PriceSource`. Si ALFRED sirve un vintage distinto del solicitado —por
+ejemplo, cuando recorta una fecha futura hasta su último vintage disponible—, `get_series` lanza un `ValueError` en
+lugar de etiquetar los valores con una fecha a la que no pertenecen.
 
 `CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker>.csv`; el archivo se
 reutiliza mientras empiece antes de la fecha solicitada y su último dato siga vigente (margen configurable con

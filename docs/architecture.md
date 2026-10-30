@@ -113,7 +113,8 @@ modelo; `MonteCarloParameters` concentra la parametrización del motor `simulati
 los helpers de Markdown y gráficos que los métodos públicos delegan. `FredMacroSource`/`MacroSeries` cubren la
 tipología de datos adicional (macroeconomía y tipos de interés): las descargas pasan por el endpoint de archivo de
 ALFRED, cada `MacroSeries` registra en `vintage_date` el vintage del que proceden sus valores y `as_of` recupera los
-valores punto-en-el-tiempo publicados hasta una fecha.
+valores punto-en-el-tiempo publicados hasta una fecha; si el vintage servido no coincide con el solicitado, la
+descarga falla con `ValueError` en lugar de etiquetar mal la serie.
 
 ## Flujo del sistema
 
