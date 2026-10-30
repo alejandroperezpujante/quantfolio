@@ -1,12 +1,13 @@
 """Tests for the FRED macro-series provider."""
 
+import datetime as dt
 from typing import cast
 
 import pandas as pd
 import pytest
 
 from quantfolio.macro import (
-    FRED_CSV_URL,
+    ALFRED_CSV_URL,
     FredMacroSource,
     MacroSeries,
     _parse_vintage_column,
@@ -51,15 +52,16 @@ def test_fred_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     """FRED CSV responses are normalized, dropping missing observations."""
 
     def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
-        assert url.startswith(FRED_CSV_URL)
+        assert url.startswith(ALFRED_CSV_URL)
         assert dtype is str
         assert "id=DGS10" in url
         assert "cosd=2025-01-02" in url
         assert "coed=2025-01-10" in url
+        assert "vintage_date" not in url
         return pd.DataFrame(
             {
                 "observation_date": ["2025-01-02", "2025-01-03", "2025-01-06"],
-                "DGS10": [4.25, ".", 4.3],
+                "DGS10_20250315": [4.25, ".", 4.3],
             }
         )
 
@@ -69,6 +71,7 @@ def test_fred_source_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert series.series_id == "DGS10"
     assert series.source == "FRED"
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
     assert list(series.values) == [4.25, 4.3]
 
 
@@ -78,13 +81,69 @@ def test_fred_source_allows_optional_dates(monkeypatch: pytest.MonkeyPatch) -> N
     def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
         assert url.endswith("id=CPIAUCSL")
         assert dtype is str
-        return pd.DataFrame({"observation_date": ["2025-01-01"], "CPIAUCSL": [315.0]})
+        return pd.DataFrame({"observation_date": ["2025-01-01"], "CPIAUCSL_20261030": [315.0]})
 
     monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
 
     series = FredMacroSource().get_series("CPIAUCSL")
 
     assert len(series.values) == 1
+    assert series.vintage_date == pd.Timestamp("2026-10-30")
+
+
+@pytest.mark.parametrize("as_of", ["2025-03-15", dt.date(2025, 3, 15)])
+def test_fred_source_pins_vintage_with_as_of(
+    monkeypatch: pytest.MonkeyPatch, as_of: str | dt.date
+) -> None:
+    """as_of pins the ALFRED vintage and stamps the provenance."""
+
+    def fake_read_csv(url: str, dtype: object) -> pd.DataFrame:
+        assert dtype is str
+        assert "id=DGS10" in url
+        assert "vintage_date=2025-03-15" in url
+        return pd.DataFrame({"observation_date": ["2025-03-13"], "DGS10_20250315": [4.27]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10", as_of=as_of)
+    assert series.vintage_date == pd.Timestamp("2025-03-15")
+
+
+def test_fred_source_vintage_falls_back_to_none_on_unparsable_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A response column without a vintage suffix leaves the vintage unspecified."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame({"observation_date": ["2025-01-02"], "DGS10": [4.25]})
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series("DGS10")
+    assert series.vintage_date is None
+
+
+def test_fred_source_vintage_preserves_release_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Observations not published at the vintage stay absent: no reindexing, no fill."""
+
+    def fake_read_csv(_url: str, dtype: object) -> pd.DataFrame:
+        del dtype
+        return pd.DataFrame(
+            {
+                "observation_date": ["2025-01-01", "2025-02-01"],
+                "CPIAUCSL_20250315": [319.086, 319.775],
+            }
+        )
+
+    monkeypatch.setattr("quantfolio.macro.pd.read_csv", fake_read_csv)
+    series = FredMacroSource().get_series(
+        "CPIAUCSL", start="2025-01-01", end="2025-03-31", as_of="2025-03-15"
+    )
+    assert len(series.values) == 2
+    # PD011 is a false positive: this accesses the MacroSeries dataclass field of
+    # that name, not the deprecated pandas Series.values.
+    assert series.values.index.max() == pd.Timestamp("2025-02-01")  # noqa: PD011
 
 
 def test_fred_source_rejects_empty_payloads(
