@@ -1,0 +1,85 @@
+name: Dependabot auto-merge
+
+# Patch and minor Dependabot updates arm auto-merge as soon as the pull request
+# exists; the protected branch then decides when it lands (`Quality gates` and
+# `Strict analysis` on the exact revision, branch up to date with `main`).
+# Majors are never armed and stay open for review.
+#
+# Dependabot-triggered runs receive a read-only GITHUB_TOKEN, so the `permissions`
+# block below is what makes arming possible at all.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+
+jobs:
+  classify:
+    name: Arm auto-merge
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'alejandroperezpujante/quantfolio'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Read the Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Arm auto-merge for patch and minor updates
+        if: >-
+          contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'),
+          steps.metadata.outputs.update-type)
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record the decision
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          ARMED: >-
+            ${{ contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'),
+            steps.metadata.outputs.update-type) }}
+        run: |
+          if [ "$ARMED" = "true" ]; then
+            verdict="armed for auto-merge"
+          else
+            verdict="left open for review"
+          fi
+          echo "Dependabot update type \`$UPDATE_TYPE\`: $verdict." >> "$GITHUB_STEP_SUMMARY"
+
+  drain:
+    name: Keep the queue moving
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Update armed Dependabot branches that fell behind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr list --state open --limit 50 \
+            --json number,headRefName,autoMergeRequest,mergeStateStatus \
+            --jq '.[]
+                  | select(.headRefName | startswith("dependabot/"))
+                  | select(.autoMergeRequest != null)
+                  | select(.mergeStateStatus == "BEHIND" or .mergeStateStatus == "UNKNOWN")
+                  | .number' > candidates.txt
+          while read -r number; do
+            head=$(gh pr view "$number" --json headRefOid --jq .headRefOid)
+            if gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch" \
+                 -F "expected_head_sha=$head" > /dev/null 2>&1; then
+              echo "- Updated #$number so it can be validated against the new \`main\`." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- Left #$number as it was (nothing to update, or not updatable)." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < candidates.txt
