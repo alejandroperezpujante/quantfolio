@@ -1,5 +1,6 @@
 """Macroeconomic time series from FRED."""
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 from urllib.parse import urlencode
@@ -17,6 +18,27 @@ FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 FRED_CSV_COLUMNS = 2
 
 
+def _parse_vintage_column(value_column: str) -> pd.Timestamp | None:
+    """Extract the vintage date embedded in an ALFRED value column name.
+
+    Args:
+        value_column: Column name of the CSV export, for example
+            ``"CPIAUCSL_20250315"``.
+
+    Returns:
+        The vintage date when the text after the last underscore is strictly
+        eight digits parsable as ``%Y%m%d``, otherwise ``None``.
+
+    """
+    suffix = value_column.rsplit("_", maxsplit=1)[-1]
+    if re.fullmatch(r"[0-9]{8}", suffix) is None:
+        return None
+    try:
+        return pd.to_datetime(suffix, format="%Y%m%d")
+    except ValueError:
+        return None
+
+
 @dataclass
 class MacroSeries:
     """A macroeconomic indicator downloaded from FRED.
@@ -25,12 +47,15 @@ class MacroSeries:
         series_id: FRED identifier, for example ``"DGS10"``.
         values: Indicator values indexed by observation date.
         source: Human-readable name of the provider.
+        vintage_date: Vintage the values represent — the point-in-time view.
+            ``None`` means unspecified.
 
     """
 
     series_id: str
     values: pd.Series[float]
     source: str = "FRED"
+    vintage_date: pd.Timestamp | None = None
 
     def __post_init__(self) -> None:
         """Validate and clean the downloaded values.
