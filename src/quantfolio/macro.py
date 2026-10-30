@@ -37,7 +37,7 @@ def _parse_vintage_column(value_column: str) -> pd.Timestamp | None:
 
     """
     suffix = value_column.rsplit("_", maxsplit=1)[-1]
-    if re.fullmatch(r"[0-9]{8}", suffix) is None:
+    if re.fullmatch(r"\d{8}", suffix, flags=re.ASCII) is None:
         return None
     try:
         return pd.to_datetime(suffix, format="%Y%m%d")
