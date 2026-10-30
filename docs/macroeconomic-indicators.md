@@ -35,7 +35,9 @@ When the toolkit ingests these series it goes through ALFRED's archival CSV expo
 `MacroSeries` records the vintage it comes from in its `vintage_date` field, and `get_series(..., as_of=...)` returns the
 values actually published as of a past date. Revisions and release lags therefore cannot leak into historical analysis
 (the look-ahead bias these would otherwise introduce is avoided), and observations not yet released at the requested
-vintage remain absent from the series.
+vintage remain absent from the series. When the endpoint serves a vintage other than the one requested — for example
+when ALFRED clamps a future date to its latest vintage — `get_series` raises `ValueError` instead of stamping the
+values with a date they do not belong to.
 
 ## Sources
 
