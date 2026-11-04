@@ -72,6 +72,9 @@ known-first-party = ["quantfolio"]
 # S310 audits urlopen URLs; this module only calls the constant HTTPS Kraken endpoint
 # with percent-encoded parameters.
 "src/quantfolio/sources/kraken.py" = ["S310"]
+# S310 audits urlopen URLs; this module only calls the constant HTTPS Alpha Vantage
+# endpoint with percent-encoded parameters.
+"src/quantfolio/sources/alpha_vantage/client.py" = ["S310"]
 
 [tool.ruff.format]
 quote-style = "double"
