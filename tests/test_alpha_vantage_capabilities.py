@@ -6,6 +6,7 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
+from unittest.mock import Mock
 
 import pytest
 
@@ -15,6 +16,12 @@ from quantfolio.sources.alpha_vantage.capabilities import (
     AlphaVantageCapabilities,
     AlphaVantageCapabilityStore,
     AlphaVantagePlan,
+    create_alpha_vantage_source,
+)
+from quantfolio.sources.alpha_vantage.client import (
+    AlphaVantageClient,
+    AlphaVantageError,
+    AlphaVantageErrorCategory,
 )
 
 API_KEY = "test-key"
@@ -303,3 +310,220 @@ def test_cache_invalidation_failure_warns_without_raising(
         store(tmp_path).invalidate(API_KEY)
 
     assert cache_path(tmp_path).exists()
+
+
+def basic_payload() -> dict[str, object]:
+    """Return a valid compact daily response for the startup key probe."""
+    return {"Time Series (Daily)": {"2025-01-02": {"4. close": "100.00"}}}
+
+
+def adjusted_payload() -> dict[str, object]:
+    """Return a valid adjusted daily response for the plan probe."""
+    return {"Time Series (Daily)": {"2025-01-02": {"5. adjusted close": "100.00"}}}
+
+
+def index_payload() -> dict[str, object]:
+    """Return a valid daily index response for the entitlement probe."""
+    return {"data": [{"date": "2025-01-02", "close": "5000.00"}]}
+
+
+def premium_denial() -> AlphaVantageError:
+    """Return the recognized entitlement error used by discovery tests."""
+    return AlphaVantageError("Sin acceso premium.", AlphaVantageErrorCategory.ENTITLEMENT)
+
+
+def ordered_client(monkeypatch: pytest.MonkeyPatch, responses: list[object]) -> Mock:
+    """Install an ordered fake client that exposes discovery requests."""
+    client = Mock()
+    client.get.side_effect = responses
+    monkeypatch.setattr(AlphaVantageClient, "get", client.get)
+    return client
+
+
+def discovery_call_functions(client: Mock) -> list[str]:
+    """Return the requested endpoint functions in call order."""
+    return [call.kwargs["function"] for call in client.get.call_args_list]
+
+
+def test_free_discovery_uses_basic_and_adjusted_probes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A premium denial after validation establishes free, index-disabled capability."""
+    client = ordered_client(monkeypatch, [basic_payload(), premium_denial()])
+
+    source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.FREE
+    assert source.indexes_enabled is False
+    assert discovery_call_functions(client) == ["TIME_SERIES_DAILY", "TIME_SERIES_DAILY_ADJUSTED"]
+
+
+def test_premium_discovery_enables_indexes_after_three_probes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Premium capability needs a separately validated index entitlement."""
+    client = ordered_client(monkeypatch, [basic_payload(), adjusted_payload(), index_payload()])
+
+    source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is True
+    assert discovery_call_functions(client) == [
+        "TIME_SERIES_DAILY",
+        "TIME_SERIES_DAILY_ADJUSTED",
+        "INDEX_DATA",
+    ]
+
+
+def test_fresh_cache_still_validates_key_but_skips_capability_probes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fresh entitlement metadata never replaces the mandatory basic key probe."""
+    store(tmp_path).save(
+        API_KEY,
+        AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=True),
+    )
+    client = ordered_client(monkeypatch, [basic_payload()])
+
+    source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is True
+    assert discovery_call_functions(client) == ["TIME_SERIES_DAILY"]
+
+
+def test_index_entitlement_denial_is_cached_as_premium_without_indexes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recognized index denial preserves premium non-index capabilities."""
+    client = ordered_client(monkeypatch, [basic_payload(), adjusted_payload(), premium_denial()])
+
+    source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is False
+    assert discovery_call_functions(client) == [
+        "TIME_SERIES_DAILY",
+        "TIME_SERIES_DAILY_ADJUSTED",
+        "INDEX_DATA",
+    ]
+    assert store(tmp_path).load(API_KEY) == AlphaVantageCapabilities(
+        AlphaVantagePlan.PREMIUM,
+        indexes_enabled=False,
+    )
+
+
+def test_transient_index_failure_returns_uncached_premium_without_indexes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ambiguous index probe warns but does not disable non-index families."""
+    failure = AlphaVantageError("Error temporal.", AlphaVantageErrorCategory.GENERIC)
+    client = ordered_client(monkeypatch, [basic_payload(), adjusted_payload(), failure])
+
+    with pytest.warns(RuntimeWarning, match="índices"):
+        source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is False
+    assert discovery_call_functions(client) == [
+        "TIME_SERIES_DAILY",
+        "TIME_SERIES_DAILY_ADJUSTED",
+        "INDEX_DATA",
+    ]
+    assert store(tmp_path).load(API_KEY) is None
+
+
+def test_ambiguous_plan_probe_raises_and_does_not_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only an explicit entitlement denial can establish the free plan."""
+    client = ordered_client(monkeypatch, [basic_payload(), {"unexpected": "shape"}])
+
+    with pytest.raises(AlphaVantageError):
+        create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert discovery_call_functions(client) == ["TIME_SERIES_DAILY", "TIME_SERIES_DAILY_ADJUSTED"]
+    assert store(tmp_path).load(API_KEY) is None
+
+
+def test_invalid_basic_probe_invalidates_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid startup data removes potentially stale entitlement metadata."""
+    store(tmp_path).save(
+        API_KEY,
+        AlphaVantageCapabilities(AlphaVantagePlan.FREE, indexes_enabled=False),
+    )
+    client = ordered_client(monkeypatch, [{"Time Series (Daily)": {}}])
+
+    with pytest.raises(AlphaVantageError):
+        create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert discovery_call_functions(client) == ["TIME_SERIES_DAILY"]
+    assert store(tmp_path).load(API_KEY) is None
+
+
+def test_basic_probe_without_a_raw_close_invalidates_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A daily table without raw close values cannot validate the key."""
+    store(tmp_path).save(
+        API_KEY,
+        AlphaVantageCapabilities(AlphaVantagePlan.FREE, indexes_enabled=False),
+    )
+    client = ordered_client(
+        monkeypatch,
+        [{"Time Series (Daily)": {"2025-01-02": {"unexpected": "100.00"}}}],
+    )
+
+    with pytest.raises(AlphaVantageError):
+        create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert discovery_call_functions(client) == ["TIME_SERIES_DAILY"]
+    assert store(tmp_path).load(API_KEY) is None
+
+
+@pytest.mark.parametrize("index_response", [{"data": []}, {"data": [{"date": "2025-01-02"}]}])
+def test_malformed_index_probe_keeps_uncached_premium_without_indexes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    index_response: dict[str, object],
+) -> None:
+    """Malformed index data is ambiguous and must not become cached entitlement metadata."""
+    client = ordered_client(monkeypatch, [basic_payload(), adjusted_payload(), index_response])
+
+    with pytest.warns(RuntimeWarning, match="índices"):
+        source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is False
+    assert discovery_call_functions(client) == [
+        "TIME_SERIES_DAILY",
+        "TIME_SERIES_DAILY_ADJUSTED",
+        "INDEX_DATA",
+    ]
+    assert store(tmp_path).load(API_KEY) is None
+
+
+def test_discovery_survives_cache_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid source remains available when capability persistence fails."""
+    client = ordered_client(monkeypatch, [basic_payload(), premium_denial()])
+    monkeypatch.setattr(Path, "replace", raise_oserror)
+
+    with pytest.warns(RuntimeWarning, match="caché"):
+        source = create_alpha_vantage_source(API_KEY, cache_dir=tmp_path)
+
+    assert source.plan is AlphaVantagePlan.FREE
+    assert source.indexes_enabled is False
+    assert discovery_call_functions(client) == ["TIME_SERIES_DAILY", "TIME_SERIES_DAILY_ADJUSTED"]

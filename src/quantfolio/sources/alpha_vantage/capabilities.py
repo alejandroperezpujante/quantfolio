@@ -1,5 +1,7 @@
 """Runtime plan metadata and the persistent capability cache for Alpha Vantage."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import warnings
@@ -8,8 +10,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
+
+from quantfolio.sources.alpha_vantage.client import (
+    AlphaVantageClient,
+    AlphaVantageError,
+    AlphaVantageErrorCategory,
+)
+
+if TYPE_CHECKING:
+    from quantfolio.sources.alpha_vantage.provider import AlphaVantageSource
 
 #: Version of the on-disk capability schema.
 SCHEMA_VERSION = 1
@@ -184,3 +195,130 @@ def _is_fresh(value: object) -> bool:
         return False
     age = datetime.now(UTC) - detected_at
     return timedelta(0) <= age < CAPABILITY_TTL
+
+
+def create_alpha_vantage_source(
+    api_key: str,
+    *,
+    cache_dir: str | Path = "data",
+) -> AlphaVantageSource:
+    """Validate a key and discover its Alpha Vantage runtime capabilities.
+
+    A compact raw IBM request always validates the key, even when a fresh capability
+    snapshot is available. A cache hit then avoids only the entitlement probes.
+
+    Args:
+        api_key: Alpha Vantage credential used for the validation probes.
+        cache_dir: Root directory of the optional capability cache.
+
+    Returns:
+        A configured source whose plan and index entitlement were validated or loaded.
+
+    Raises:
+        AlphaVantageError: If basic validation or plan discovery cannot complete.
+
+    """
+    store = AlphaVantageCapabilityStore(cache_dir)
+    client = AlphaVantageClient(api_key)
+    try:
+        basic = client.get(function="TIME_SERIES_DAILY", symbol="IBM", outputsize="compact")
+        _require_table_field(basic, "Time Series (Daily)", "4. close", "validación básica")
+    except AlphaVantageError:
+        store.invalidate(api_key)
+        raise
+
+    cached = store.load(api_key)
+    if cached is not None:
+        return _source(api_key, cached, cache_dir)
+
+    try:
+        adjusted = client.get(
+            function="TIME_SERIES_DAILY_ADJUSTED",
+            symbol="IBM",
+            outputsize="compact",
+        )
+        _require_table_field(adjusted, "Time Series (Daily)", "5. adjusted close", "plan")
+    except AlphaVantageError as error:
+        if error.category is not AlphaVantageErrorCategory.ENTITLEMENT:
+            raise
+        capabilities = AlphaVantageCapabilities(AlphaVantagePlan.FREE, indexes_enabled=False)
+        store.save(api_key, capabilities)
+        return _source(api_key, capabilities, cache_dir)
+
+    premium = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=True)
+    try:
+        index = client.get(function="INDEX_DATA", symbol="SPX", interval="daily")
+        _require_array_field(index, "data", "close", "índices")
+    except AlphaVantageError as error:
+        if error.category is AlphaVantageErrorCategory.ENTITLEMENT:
+            no_indexes = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=False)
+            store.save(api_key, no_indexes)
+            return _source(api_key, no_indexes, cache_dir)
+        return _unavailable_indexes_source(api_key, cache_dir)
+
+    store.save(api_key, premium)
+    return _source(api_key, premium, cache_dir)
+
+
+def _source(
+    api_key: str,
+    capabilities: AlphaVantageCapabilities,
+    cache_dir: str | Path,
+) -> AlphaVantageSource:
+    """Create a source lazily to keep the provider/capability import graph acyclic."""
+    from quantfolio.sources.alpha_vantage.provider import AlphaVantageSource  # noqa: PLC0415
+
+    return AlphaVantageSource(
+        api_key,
+        plan=capabilities.plan,
+        indexes_enabled=capabilities.indexes_enabled,
+        cache_dir=cache_dir,
+    )
+
+
+def _require_table_field(
+    payload: dict[str, object],
+    table_name: str,
+    field: str,
+    probe: str,
+) -> None:
+    """Require one non-empty date-keyed response table with a price field."""
+    table = payload.get(table_name)
+    if not isinstance(table, dict) or not table:
+        _raise_invalid_probe(probe)
+    rows = cast("dict[str, object]", table)
+    if not any(isinstance(row, dict) and field in row for row in rows.values()):
+        _raise_invalid_probe(probe)
+
+
+def _require_array_field(
+    payload: dict[str, object],
+    table_name: str,
+    field: str,
+    probe: str,
+) -> None:
+    """Require one non-empty object array response with a price field."""
+    table = payload.get(table_name)
+    if not isinstance(table, list) or not table:
+        _raise_invalid_probe(probe)
+    rows = cast("list[object]", table)
+    if not any(isinstance(row, dict) and field in row for row in rows):
+        _raise_invalid_probe(probe)
+
+
+def _raise_invalid_probe(probe: str) -> None:
+    """Raise a generic provider error for an unexpected validation response."""
+    msg = f"Alpha Vantage devolvió una respuesta no válida durante la {probe}."
+    raise AlphaVantageError(msg, AlphaVantageErrorCategory.GENERIC)
+
+
+def _unavailable_indexes_source(api_key: str, cache_dir: str | Path) -> AlphaVantageSource:
+    """Warn about an ambiguous index probe and return usable non-index capabilities."""
+    warnings.warn(
+        "No se pudo validar el acceso a índices de Alpha Vantage; "
+        "los índices quedan deshabilitados.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    capabilities = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=False)
+    return _source(api_key, capabilities, cache_dir)
