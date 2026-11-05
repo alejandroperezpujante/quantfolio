@@ -1,4 +1,4 @@
-"""Tests for the Alpha Vantage equity price source."""
+"""Tests for the Alpha Vantage price source."""
 
 import warnings
 from typing import TYPE_CHECKING, cast
@@ -18,6 +18,7 @@ from quantfolio.sources.alpha_vantage.client import (
     AlphaVantageErrorCategory,
 )
 from quantfolio.sources.alpha_vantage.provider import AlphaVantageSource
+from quantfolio.sources.cache import CachedPriceSource
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -90,6 +91,103 @@ def free_payload(first: pd.Timestamp, periods: int) -> dict[str, object]:
 def premium_payload(first: pd.Timestamp, periods: int) -> dict[str, object]:
     """Return a full adjusted daily payload."""
     return _daily_payload(first, periods, adjusted=True)
+
+
+def _observation_dates(first: pd.Timestamp, periods: int) -> pd.DatetimeIndex:
+    """Return the business-day observation dates of a fixture."""
+    return pd.bdate_range(start=first, periods=periods)
+
+
+def index_payload(first: pd.Timestamp, periods: int) -> dict[str, object]:
+    """Return an official-shaped daily index payload."""
+    dates = _observation_dates(first, periods)
+    return {
+        "Meta Data": {
+            "1. Information": "Daily Prices and Volumes for Index",
+            "2. Symbol": "SPX",
+            "3. Last Refreshed": dates[-1].strftime("%Y-%m-%d"),
+            "4. Time Zone": "US/Eastern",
+        },
+        "data": [
+            {
+                "date": date.strftime("%Y-%m-%d"),
+                "open": "5000.0000",
+                "high": "5010.0000",
+                "low": "4990.0000",
+                "close": f"{5000.0 + position:.4f}",
+            }
+            for position, date in enumerate(dates)
+        ],
+    }
+
+
+def fx_payload(first: pd.Timestamp, periods: int) -> dict[str, object]:
+    """Return an official-shaped daily FX payload using ``4. close``."""
+    dates = _observation_dates(first, periods)
+    return {
+        "Meta Data": {
+            "1. Information": "Forex Daily Prices (open, high, low, close)",
+            "2. From Symbol": "EUR",
+            "3. To Symbol": "USD",
+            "4. Last Refreshed": dates[-1].strftime("%Y-%m-%d"),
+            "5. Time Zone": "UTC",
+        },
+        "Time Series FX (Daily)": {
+            date.strftime("%Y-%m-%d"): {
+                "1. open": "1.1000",
+                "2. high": "1.1100",
+                "3. low": "1.0900",
+                "4. close": f"{1.1000 + position / 1000:.4f}",
+            }
+            for position, date in enumerate(dates)
+        },
+    }
+
+
+def crypto_payload(first: pd.Timestamp, periods: int) -> dict[str, object]:
+    """Return an official-shaped daily crypto payload using plain ``4. close``."""
+    dates = _observation_dates(first, periods)
+    return {
+        "Meta Data": {
+            "1. Information": "Daily Prices and Volumes for Digital Currency",
+            "2. Digital Currency Code": "BTC",
+            "3. Digital Currency Name": "Bitcoin",
+            "4. Market Code": "EUR",
+            "5. Market Name": "Euro",
+            "6. Last Refreshed": dates[-1].strftime("%Y-%m-%d"),
+            "7. Time Zone": "UTC",
+        },
+        "Time Series (Digital Currency Daily)": {
+            date.strftime("%Y-%m-%d"): {
+                "1. open": "40000.00000000",
+                "2. high": "41000.00000000",
+                "3. low": "39000.00000000",
+                "4. close": f"{40000.0 + position:.8f}",
+                "5. volume": "12.34567890",
+            }
+            for position, date in enumerate(dates)
+        },
+    }
+
+
+def commodity_payload(
+    first: pd.Timestamp,
+    periods: int,
+    *,
+    field: str,
+    base: float,
+) -> dict[str, object]:
+    """Return an official-shaped commodity payload with the given price field."""
+    dates = _observation_dates(first, periods)
+    return {
+        "name": "Commodity fixture",
+        "interval": "daily",
+        "unit": "fixture unit",
+        "data": [
+            {"date": date.strftime("%Y-%m-%d"), field: f"{base + position:.4f}"}
+            for position, date in enumerate(dates)
+        ],
+    }
 
 
 class _ClientStub:
@@ -179,6 +277,32 @@ def warn_but_do_not_write(*_args: object, **_kwargs: object) -> None:
         RuntimeWarning,
         stacklevel=2,
     )
+
+
+def premium_source(
+    *,
+    indexes_enabled: bool = True,
+    cache_dir: str | Path = "data",
+) -> AlphaVantageSource:
+    """Return a premium source with the requested index entitlement."""
+    return make_source(
+        AlphaVantagePlan.PREMIUM, indexes_enabled=indexes_enabled, cache_dir=cache_dir
+    )
+
+
+def premium_source_with_index_entitlement_error(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cache_dir: str | Path = "data",
+) -> tuple[AlphaVantageSource, list[dict[str, str]]]:
+    """Return a premium source whose index endpoint denies entitlement."""
+    error = AlphaVantageError(
+        "La clave no tiene acceso al endpoint de índices.",
+        AlphaVantageErrorCategory.ENTITLEMENT,
+    )
+    stub = install_client(monkeypatch, [error, index_payload(pd.Timestamp("2025-01-02"), 2)])
+    source = premium_source(cache_dir=cache_dir)
+    return source, stub.calls
 
 
 def test_package_exports_the_public_api() -> None:
@@ -337,9 +461,10 @@ def test_non_object_daily_row_raises(monkeypatch: pytest.MonkeyPatch) -> None:
         make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2025-01-02")
 
 
-def test_invalid_dates_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("day", ["not-a-date", ""])
+def test_invalid_dates_raise(monkeypatch: pytest.MonkeyPatch, day: str) -> None:
     """Malformed observation dates are rejected."""
-    install_client(monkeypatch, [{"Time Series (Daily)": {"not-a-date": {"4. close": "100.0"}}}])
+    install_client(monkeypatch, [{"Time Series (Daily)": {day: {"4. close": "100.0"}}}])
 
     with pytest.raises(ValueError, match="fechas no válidas"):
         make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2025-01-02")
@@ -468,3 +593,352 @@ def test_non_entitlement_errors_do_not_downgrade(
     assert source.plan is AlphaVantagePlan.PREMIUM
     assert source.indexes_enabled is True
     assert AlphaVantageCapabilityStore(tmp_path).load(API_KEY) is None
+
+
+def test_index_route_requests_daily_index_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The SP500 alias becomes SPX on the daily index endpoint."""
+    stub = install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 3)])
+
+    asset = premium_source().get_prices("INDEX:SP500", "2025-01-02")
+
+    assert stub.calls == [{"function": "INDEX_DATA", "symbol": "SPX", "interval": "daily"}]
+    assert asset.ticker == "INDEX:SP500"
+    assert asset.source == "Alpha Vantage (premium, daily)"
+    assert list(asset.prices) == [5000.0, 5001.0, 5002.0]
+
+
+def test_index_symbols_are_uppercased_without_an_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Other valid index symbols are only uppercased."""
+    stub = install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 2)])
+
+    asset = premium_source().get_prices("INDEX:ndx", "2025-01-02")
+
+    assert stub.calls == [{"function": "INDEX_DATA", "symbol": "NDX", "interval": "daily"}]
+    assert asset.ticker == "INDEX:ndx"
+
+
+@pytest.mark.parametrize(
+    ("plan", "indexes_enabled"),
+    [
+        (AlphaVantagePlan.FREE, False),
+        (AlphaVantagePlan.PREMIUM, False),
+    ],
+)
+def test_unavailable_indexes_fail_before_http(
+    monkeypatch: pytest.MonkeyPatch,
+    plan: AlphaVantagePlan,
+    *,
+    indexes_enabled: bool,
+) -> None:
+    """Indexes require both a premium plan and the index entitlement."""
+    stub = install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 2)])
+    source = make_source(plan, indexes_enabled=indexes_enabled)
+
+    with pytest.raises(ValueError, match="índice"):
+        source.get_prices("INDEX:SP500", "2025-01-01")
+
+    assert stub.calls == []
+
+
+def test_index_entitlement_denial_disables_only_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An index entitlement denial keeps the premium plan and disables indexes only."""
+    source, calls = premium_source_with_index_entitlement_error(monkeypatch, cache_dir=tmp_path)
+
+    with pytest.raises(AlphaVantageError):
+        source.get_prices("INDEX:SP500", "2025-01-01")
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is False
+    assert len(calls) == 1
+
+
+def test_index_entitlement_denial_persists_premium_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The persisted snapshot records premium without index access."""
+    source, _ = premium_source_with_index_entitlement_error(monkeypatch, cache_dir=tmp_path)
+
+    with pytest.raises(AlphaVantageError):
+        source.get_prices("INDEX:SP500", "2025-01-01")
+
+    assert AlphaVantageCapabilityStore(tmp_path).load(API_KEY) == AlphaVantageCapabilities(
+        AlphaVantagePlan.PREMIUM,
+        indexes_enabled=False,
+    )
+
+
+def test_index_entitlement_denial_keeps_other_families(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Other families keep working with premium provenance after an index denial."""
+    error = AlphaVantageError(
+        "La clave no tiene acceso al endpoint de índices.",
+        AlphaVantageErrorCategory.ENTITLEMENT,
+    )
+    stub = install_client(monkeypatch, [error, fx_payload(pd.Timestamp("2025-01-02"), 2)])
+    source = premium_source(cache_dir=tmp_path)
+
+    with pytest.raises(AlphaVantageError):
+        source.get_prices("INDEX:SP500", "2025-01-01")
+    asset = source.get_prices("FX:EUR/USD", "2025-01-02")
+
+    assert asset.source == "Alpha Vantage (premium, daily)"
+    assert len(stub.calls) == 2
+
+
+def test_non_index_entitlement_errors_keep_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An entitlement denial outside indexes does not change runtime capabilities."""
+    install_client(
+        monkeypatch,
+        [AlphaVantageError("Sin acceso.", AlphaVantageErrorCategory.ENTITLEMENT)],
+    )
+    source = premium_source(cache_dir=tmp_path)
+
+    with pytest.raises(AlphaVantageError):
+        source.get_prices("FX:EUR/USD", "2025-01-01")
+
+    assert source.plan is AlphaVantagePlan.PREMIUM
+    assert source.indexes_enabled is True
+    assert AlphaVantageCapabilityStore(tmp_path).load(API_KEY) is None
+
+
+def test_fx_route_requests_full_history(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FX pairs use the daily endpoint with the complete history."""
+    stub = install_client(monkeypatch, [fx_payload(pd.Timestamp("2025-01-02"), 3)])
+
+    asset = premium_source().get_prices("FX:eur/usd", "2025-01-02")
+
+    assert stub.calls == [
+        {
+            "function": "FX_DAILY",
+            "from_symbol": "EUR",
+            "to_symbol": "USD",
+            "outputsize": "full",
+        }
+    ]
+    assert asset.ticker == "FX:eur/usd"
+    assert asset.source == "Alpha Vantage (premium, daily)"
+    assert list(asset.prices) == [1.1, 1.101, 1.102]
+
+
+def test_fx_full_history_is_not_subject_to_the_compact_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A free key still receives uncapped FX history with free provenance."""
+    stub = install_client(monkeypatch, [fx_payload(pd.Timestamp("2025-01-02"), 100)])
+
+    asset = make_source(AlphaVantagePlan.FREE).get_prices("FX:EUR/USD", "2020-01-01")
+
+    assert stub.calls[0]["outputsize"] == "full"
+    assert asset.prices.index.min() == pd.Timestamp("2025-01-02")
+    assert asset.source == "Alpha Vantage (free, daily)"
+
+
+def test_crypto_route_uses_the_current_plain_close(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Crypto requests the digital-currency endpoint and extracts plain ``4. close``."""
+    stub = install_client(monkeypatch, [crypto_payload(pd.Timestamp("2025-01-02"), 2)])
+
+    asset = premium_source().get_prices("CRYPTO:1inch/usd", "2025-01-02")
+
+    assert stub.calls == [
+        {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "1INCH", "market": "USD"}
+    ]
+    assert asset.ticker == "CRYPTO:1inch/usd"
+    assert asset.source == "Alpha Vantage (premium, daily)"
+    assert list(asset.prices) == [40000.0, 40001.0]
+
+
+@pytest.mark.parametrize(
+    ("ticker", "expected", "field"),
+    [
+        ("COMMODITY:WTI", {"function": "WTI", "interval": "daily"}, "value"),
+        ("COMMODITY:BRENT", {"function": "BRENT", "interval": "daily"}, "value"),
+        ("COMMODITY:NATURAL_GAS", {"function": "NATURAL_GAS", "interval": "daily"}, "value"),
+        (
+            "COMMODITY:GOLD",
+            {"function": "GOLD_SILVER_HISTORY", "symbol": "GOLD", "interval": "daily"},
+            "price",
+        ),
+        (
+            "COMMODITY:XAU",
+            {"function": "GOLD_SILVER_HISTORY", "symbol": "GOLD", "interval": "daily"},
+            "price",
+        ),
+        (
+            "COMMODITY:SILVER",
+            {"function": "GOLD_SILVER_HISTORY", "symbol": "SILVER", "interval": "daily"},
+            "price",
+        ),
+        (
+            "COMMODITY:XAG",
+            {"function": "GOLD_SILVER_HISTORY", "symbol": "SILVER", "interval": "daily"},
+            "price",
+        ),
+    ],
+)
+def test_commodity_routes_force_daily_interval(
+    monkeypatch: pytest.MonkeyPatch,
+    ticker: str,
+    expected: dict[str, str],
+    field: str,
+) -> None:
+    """Approved commodity aliases always request the daily interval."""
+    stub = install_client(
+        monkeypatch,
+        [commodity_payload(pd.Timestamp("2025-01-02"), 2, field=field, base=70.0)],
+    )
+
+    asset = premium_source().get_prices(ticker, "2025-01-02")
+
+    assert stub.calls == [expected]
+    assert asset.ticker == ticker
+    assert asset.source == "Alpha Vantage (premium, daily)"
+    assert list(asset.prices) == [70.0, 71.0]
+
+
+@pytest.mark.parametrize(
+    "ticker",
+    [
+        "FX:../USD",
+        "FX:EUR/USD/extra",
+        "CRYPTO:BTC/..",
+        "UNKNOWN:IBM",
+    ],
+)
+def test_invalid_prefixed_tickers_fail_before_http(
+    monkeypatch: pytest.MonkeyPatch,
+    ticker: str,
+) -> None:
+    """Malformed pairs and unknown prefixes never reach the client."""
+    stub = install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 2)])
+    source = premium_source()
+
+    with pytest.raises(ValueError, match="Alpha Vantage"):
+        source.get_prices(ticker, "2025-01-01")
+
+    assert stub.calls == []
+
+
+@pytest.mark.parametrize(
+    "ticker",
+    [
+        "INDEX:../SPX",
+        "INDEX:SP 500",
+        "INDEX:",
+        "FX:EURUSD",
+        "FX:EUR/US",
+        "FX:EUR//USD",
+        "CRYPTO:BTC",
+        "CRYPTO:/USD",
+        "COMMODITY:",
+        "COMMODITY:COPPER",
+        "COMMODITY:ALL_COMMODITIES",
+        "COMMODITY:WTI:EXTRA",
+        ":IBM",
+    ],
+)
+def test_more_invalid_tickers_fail_before_http(
+    monkeypatch: pytest.MonkeyPatch,
+    ticker: str,
+) -> None:
+    """Separators, traversal, malformed codes and unapproved commodities are rejected."""
+    stub = install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 2)])
+
+    with pytest.raises(ValueError, match="Alpha Vantage"):
+        premium_source().get_prices(ticker, "2025-01-01")
+
+    assert stub.calls == []
+
+
+@pytest.mark.parametrize("payload", [{}, {"data": []}])
+def test_missing_array_table_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: object,
+) -> None:
+    """Responses without a usable array table are rejected."""
+    install_client(monkeypatch, [payload])
+
+    with pytest.raises(ValueError, match="serie diaria"):
+        premium_source().get_prices("INDEX:SPX", "2025-01-02")
+
+
+def test_non_object_array_row_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unexpected array row shapes are rejected instead of silently ignored."""
+    install_client(monkeypatch, [{"data": [["not", "a", "row"]]}])
+
+    with pytest.raises(TypeError, match="fila diaria"):
+        premium_source().get_prices("INDEX:SPX", "2025-01-02")
+
+
+def test_invalid_array_dates_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Missing or non-text array dates are rejected."""
+    install_client(monkeypatch, [{"data": [{"date": None, "close": "100.0"}]}])
+
+    with pytest.raises(ValueError, match="fechas no válidas"):
+        premium_source().get_prices("INDEX:SPX", "2025-01-02")
+
+
+def test_free_compact_cap_uses_raw_row_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Normalization cannot hide a capped 100-row compact response."""
+    dates = _observation_dates(pd.Timestamp("2025-01-02"), 100)
+    table: dict[str, object] = {
+        date.strftime("%Y-%m-%d"): _daily_row(100.0 + position, adjusted=False)
+        for position, date in enumerate(dates)
+    }
+    table[dates[50].strftime("%Y-%m-%d")] = {"4. close": "not-a-number"}
+    install_client(monkeypatch, [{"Time Series (Daily)": table}])
+
+    with pytest.raises(ValueError, match="100"):
+        make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2020-01-01")
+
+
+def test_fx_series_round_trips_through_the_csv_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A routed pair can be written to and read from the generic CSV cache."""
+    stub = install_client(monkeypatch, [fx_payload(pd.Timestamp("2025-01-02"), 5)])
+    cached = CachedPriceSource(premium_source(), cache_dir=tmp_path)
+
+    first = cached.get_prices("FX:EUR/USD", "2025-01-02", "2025-01-09")
+    second = cached.get_prices("FX:EUR/USD", "2025-01-02", "2025-01-09")
+
+    assert len(stub.calls) == 1
+    assert second.ticker == "FX:EUR/USD"
+    assert second.source.endswith("(cache)")
+    assert list(second.prices) == list(first.prices)
+    assert (tmp_path / "alpha-vantage" / "FX:EUR" / "USD.csv").is_file()
+
+
+def test_non_equity_window_is_inclusive_start_and_exclusive_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Routed families reuse the inclusive/exclusive window semantics."""
+    install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 4)])
+
+    asset = premium_source().get_prices("INDEX:SPX", "2025-01-03", "2025-01-07")
+
+    assert list(asset.prices.index) == [pd.Timestamp("2025-01-03"), pd.Timestamp("2025-01-06")]
+
+
+def test_get_many_routes_each_ticker_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Batch extraction keeps one keyed series and one request per family."""
+    stub = install_client(
+        monkeypatch,
+        [index_payload(pd.Timestamp("2025-01-02"), 2), fx_payload(pd.Timestamp("2025-01-02"), 2)],
+    )
+
+    result = premium_source().get_many(["INDEX:SPX", "FX:EUR/USD"], "2025-01-02")
+
+    assert set(result) == {"INDEX:SPX", "FX:EUR/USD"}
+    assert result["INDEX:SPX"].ticker == "INDEX:SPX"
+    assert result["FX:EUR/USD"].ticker == "FX:EUR/USD"
+    assert [call["function"] for call in stub.calls] == ["INDEX_DATA", "FX_DAILY"]
