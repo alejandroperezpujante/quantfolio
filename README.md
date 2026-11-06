@@ -115,6 +115,7 @@ portfolio.plot_simulation(simulations)
 │   ├── models.py            # PriceSeries y limpieza numérica
 │   ├── portfolio.py         # Portfolio: pesos, alineación, métricas, informes y Monte Carlo
 │   ├── simulation.py        # motor GBM y MonteCarloParameters
+│   ├── risk.py              # medidas puras de riesgo: drawdown, Sharpe, CAGR, VaR y CVaR
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED vía ALFRED (vintages)
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
@@ -142,6 +143,9 @@ DataClass que representa una serie temporal de precios con sus metadatos (`ticke
   duplicados;
 - calcula automáticamente `mean_price` (media) y `std_price` (desviación típica muestral), como exige el enunciado.
 
+El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_volatility`,
+`annualized_return_approx`, `annualized_volatility`, `max_drawdown` y `sharpe_ratio`.
+
 ### `Portfolio`
 
 Un **cartera de inversión** es una colección de activos junto con la fracción del capital invertido en cada uno
@@ -152,6 +156,9 @@ Un **cartera de inversión** es una colección de activos junto con la fracción
 - **normaliza** las ponderaciones para que sumen 1 (acepta pesos arbitrarios como `{AAPL: 35, SPY: 25, ...}`);
 - agrega los activos en una tabla de precios por fecha, calcula rentabilidades diarias ponderadas y estadísticos
   anualizados, y ofrece informe, gráficos y simulación de Monte Carlo.
+
+La cartera expone `max_drawdown()`, `sharpe_ratio(periods_per_year=...)`, `value_at_risk(confidence=...)` y
+`conditional_value_at_risk(confidence=...)`, y `report()` acepta `risk_free_rate` y `confidence`.
 
 ## Ingesta multifuente
 
@@ -263,9 +270,10 @@ natural.
 ## Informes
 
 - `Portfolio.report()` genera el informe Markdown parametrizable: composición, métricas históricas, calidad de los
-  datos y advertencias de riesgo, con opciones `periods_per_year`, `include_quality` e `include_warnings`. Las
-  advertencias se derivan del estado real de la cartera (cobertura de alineación, concentración en un único activo
-  y longitud de la muestra), no de supuestos fijos.
+  datos y advertencias de riesgo, con opciones `periods_per_year`, `include_quality`, `include_warnings`,
+  `risk_free_rate` y `confidence`. Las advertencias se derivan del estado real de la cartera (cobertura de
+  alineación, volatilidad elevada, caída profunda, concentración superior al 50 %, intervalos de varios días e
+  historia corta), no de supuestos fijos.
 - El informe incluye, además de la composición y las métricas básicas, la máxima caída
   histórica, el ratio de Sharpe, el VaR y el CVaR históricos al 95 %, la rentabilidad geométrica
   (CAGR), la deriva del logaritmo usada por Monte Carlo y el error estándar de la rentabilidad
@@ -376,8 +384,8 @@ aprobatoria.
   quien construye la cartera.
 - Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
   `KrakenSource` lanza un error explicativo en lugar de devolver una serie truncada. Para recuperar el cuaderno,
-  adelanta `START` a una fecha dentro de los últimos ~700 días (por ejemplo `date.today() - timedelta(days=700)`)
-  y mantén la misma fecha en los demás cuadernos para conservar la comparabilidad.
+  adelanta `START` a una fecha concreta dentro de los últimos ~700 días (por ejemplo `2026-01-02`) y mantén la
+  misma fecha en los demás cuadernos para conservar la comparabilidad.
 - La descarga por lotes de `get_many()` es secuencial, no concurrente.
 - Las rentabilidades históricas no garantizan resultados futuros, y el resultado de Monte Carlo depende de los
   supuestos utilizados.

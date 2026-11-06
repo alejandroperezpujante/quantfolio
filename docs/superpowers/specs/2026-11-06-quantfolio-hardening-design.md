@@ -1,7 +1,7 @@
 # Quantfolio Hardening Design
 
 **Date:** 2026-11-06
-**Status:** Proposed
+**Status:** Implemented
 **Source:** evaluation of the B1-T1 deliverable and independent audit (2026-11-06)
 
 ## Intent
@@ -114,6 +114,10 @@ calendars it returns zero coverage and zero gap statistics instead of raising. T
 more than 5 % of return intervals span more than one calendar day; the warning describes that
 measured share (weekends included) without claiming that the portfolio mixes calendars. The full
 return engine is out of scope; the README explains the approximation.
+
+R29 keeps the approved calendar-day share and the `> 5 %` warning, so a weekday-only portfolio can
+exceed 5 %; a union-calendar discriminator is a future enhancement, and the README documents the
+caveat.
 
 ### Cache
 

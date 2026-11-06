@@ -156,6 +156,8 @@ def _render_quality_section(
     start = returns.index.min()
     end = returns.index.max()
     years = len(returns) / periods_per_year
+    max_gap_days = quality["max_gap_days"]
+    max_gap_unit = "día" if max_gap_days == 1 else "días"
     lines = [
         "",
         f"## {section}. Calidad de los datos",
@@ -166,7 +168,7 @@ def _render_quality_section(
         f"- Cobertura tras la alineación: {quality['coverage']:.1%}",
         (
             f"- Intervalos entre retornos que abarcan más de un día natural: "
-            f"{quality['multi_day_share']:.1%} (máximo {quality['max_gap_days']} días)"
+            f"{quality['multi_day_share']:.1%} (máximo {max_gap_days} {max_gap_unit})"
         ),
         f"- Observaciones de rentabilidad: {len(returns)}",
         f"- Periodo de la muestra: {start:%Y-%m-%d} → {end:%Y-%m-%d}",

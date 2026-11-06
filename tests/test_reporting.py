@@ -99,6 +99,18 @@ def test_plot_simulation_paths_runs_headless(
     assert plt.get_fignums()
 
 
+def test_plot_simulation_paths_defaults_to_the_portfolio_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default trajectory label names a portfolio value."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+    simulations = pd.DataFrame(np.linspace(100.0, 120.0, 30).reshape(6, 5))
+
+    plot_simulation_paths(simulations, max_paths=1)
+
+    assert plt.gcf().axes[0].get_ylabel() == "Valor de la cartera"
+
+
 def test_plot_simulation_paths_rejects_empty_frames() -> None:
     """An empty simulation matrix cannot be plotted."""
     empty = pd.DataFrame()
