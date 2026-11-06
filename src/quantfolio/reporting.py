@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 
 from quantfolio.constants import (
     ALIGNMENT_COVERAGE_WARNING_THRESHOLD,
+    CONCENTRATION_WARNING_THRESHOLD,
+    DRAWDOWN_WARNING_THRESHOLD,
+    HIGH_VOLATILITY_WARNING_THRESHOLD,
     PERFORMANCE_BASE,
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
@@ -46,7 +49,7 @@ def render_portfolio_report(
     metrics = portfolio.summary(periods_per_year=periods_per_year)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
-    drawdown = portfolio.max_drawdown()
+    max_drawdown = portfolio.max_drawdown()
     sharpe = portfolio.sharpe_ratio(
         risk_free_rate=risk_free_rate,
         periods_per_year=periods_per_year,
@@ -80,7 +83,7 @@ def render_portfolio_report(
             f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
             f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
             f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
-            f"| Máxima caída histórica | {drawdown:.2%} |",
+            f"| Máxima caída histórica | {max_drawdown:.2%} |",
             f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
             f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
             f"| CVaR histórico diario ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
@@ -131,7 +134,14 @@ def render_portfolio_report(
     if include_warnings:
         lines.extend(["", f"## {section}. Advertencias de riesgo", ""])
         lines.extend(
-            f"- {warning}" for warning in _collect_risk_warnings(portfolio, quality, returns)
+            f"- {warning}"
+            for warning in _collect_risk_warnings(
+                portfolio,
+                quality,
+                returns,
+                metrics,
+                max_drawdown,
+            )
         )
 
     return "\n".join(lines)
@@ -141,6 +151,8 @@ def _collect_risk_warnings(
     portfolio: Portfolio,
     quality: dict[str, float | int],
     returns: pd.Series[float],
+    metrics: dict[str, float],
+    max_drawdown: float,
 ) -> list[str]:
     """Return the risk warnings derived from the current portfolio state."""
     risk_warnings = [
@@ -156,6 +168,22 @@ def _collect_risk_warnings(
     if len(portfolio.assets) == 1:
         risk_warnings.append(
             "La cartera concentra toda la inversión en un único activo: no hay diversificación."
+        )
+    if metrics["annualized_volatility"] >= HIGH_VOLATILITY_WARNING_THRESHOLD:
+        risk_warnings.append(
+            f"La volatilidad anualizada es {metrics['annualized_volatility']:.1%}; "
+            "la cartera se comporta como un activo de alto riesgo."
+        )
+    if max_drawdown <= DRAWDOWN_WARNING_THRESHOLD:
+        risk_warnings.append(
+            f"La máxima caída histórica es {max_drawdown:.1%}; "
+            "la simulación puede subestimar episodios de estrés."
+        )
+    top_ticker, top_weight = max(portfolio.weights.items(), key=lambda item: item[1])
+    if len(portfolio.assets) > 1 and top_weight >= CONCENTRATION_WARNING_THRESHOLD:
+        risk_warnings.append(
+            f"{top_ticker} concentra el {top_weight:.1%} de la cartera; "
+            "la diversificación es limitada."
         )
     if len(returns) < SHORT_HISTORY_WARNING_THRESHOLD:
         risk_warnings.append(
