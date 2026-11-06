@@ -1058,6 +1058,9 @@ Add a bullet to the README "Limitaciones y advertencias" section:
 - Las carteras que mezclan calendarios (por ejemplo, cripto y acciones) calculan los retornos
   sobre la intersección de fechas; algunos intervalos entre retornos abarcan varios días naturales
   y la anualización con 252 o 365 periodos es aproximada. El informe muestra el porcentaje afectado.
+  Una cartera de un solo calendario también puede superar el 5 % porque los fines de semana cuentan
+  como días naturales, así que la advertencia describe ese porcentaje medido y no afirma que la
+  cartera mezcle calendarios.
 ```
 
 - [ ] **Step 6: Run the tests**
@@ -1492,8 +1495,8 @@ In the "Informes" section, add:
 In the "Uso" section, add:
 
 ```markdown
-Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; la última
-sesión disponible depende del mercado (2026-11-05 en EE. UU., 2026-11-06 en Europa).
+Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; como `END` es
+exclusivo, la última sesión incluida es 2026-11-05 en todos los mercados.
 ```
 
 Update the demo notebook's cache markdown cell to the sanitized layout and the `ticker` column,
