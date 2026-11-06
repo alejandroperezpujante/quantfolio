@@ -61,6 +61,18 @@ classDiagram
         criptomonedas
     }
 
+    class AlphaVantageSource {
+        activos diarios opcionales
+    }
+
+    class runtime {
+        +create_price_source_registry() Mapping
+    }
+
+    class AlphaVantageCapabilityStore {
+        caché de capacidades de 24 horas
+    }
+
     class CachedPriceSource {
         +PriceSource source
         +Path cache_dir
@@ -101,13 +113,14 @@ classDiagram
     PriceSeries ..> reporting : delega
     YahooFinanceSource --|> PriceSource
     KrakenSource --|> PriceSource
+    AlphaVantageSource --|> PriceSource
     CachedPriceSource --|> PriceSource
     CachedPriceSource o-- "1" PriceSource : envuelve
     FredMacroSource ..> MacroSeries : produce
 ```
 
 **Lectura del diagrama.** `PriceSource` es el contrato común de la capa de ingesta: los proveedores concretos
-(Yahoo Finance, Kraken) lo implementan y `CachedPriceSource` lo decora sobre cualquier otro proveedor, de forma
+(Yahoo Finance, Kraken y Alpha Vantage) lo implementan y `CachedPriceSource` lo decora sobre cualquier otro proveedor, de forma
 que la capa de análisis nunca depende de una API concreta. `PriceSeries` y `Portfolio` son las DataClasses del
 modelo; `MonteCarloParameters` concentra la parametrización del motor `simulation.py`, y `reporting.py` contiene
 los helpers de Markdown y gráficos que los métodos públicos delegan. `FredMacroSource`/`MacroSeries` cubren la
@@ -124,6 +137,9 @@ flowchart LR
     subgraph ingestion["Ingesta y estandarización (sources/, macro.py)"]
         YF["YahooFinanceSource<br/>acciones e índices"]
         KR["KrakenSource<br/>criptomonedas"]
+        AV["AlphaVantageSource<br/>activos diarios opcionales"]
+        RT["runtime.py<br/>registro inmutable"]
+        CP["capabilities.py<br/>validación y caché"]
         CA["CachedPriceSource<br/>caché CSV"]
         FR["FredMacroSource<br/>macro y tipos"]
     end
@@ -134,13 +150,17 @@ flowchart LR
     MC["simulation.py<br/>GBM Monte Carlo"]
     RP["reporting.py<br/>informe Markdown + gráficos"]
 
-    NB --> YF
-    NB --> KR
+    NB --> RT
+    RT --> YF
+    RT --> KR
+    RT --> AV
+    RT --> CP
     NB --> FR
     YF --> CA
     KR --> CA
     YF --> PS
     KR --> PS
+    AV --> PS
     CA --> PS
     FR --> MS
     PS --> PF
@@ -165,6 +185,7 @@ cuatro clases en una cartera diversificada.
 | `quantfolio.portfolio` | `Portfolio`: validación de pesos, alineación temporal, métricas, informe y Monte Carlo. |
 | `quantfolio.simulation` | `MonteCarloParameters` y el motor GBM compartido por activo y cartera. |
 | `quantfolio.reporting` | Generación del informe Markdown y de todas las visualizaciones. |
-| `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken) y caché CSV. |
+| `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken, Alpha Vantage) y caché CSV. |
+| `quantfolio.runtime` | Registro inmutable y descubrimiento opcional de Alpha Vantage; FRED permanece separado. |
 | `quantfolio.macro` | `MacroSeries` y proveedor FRED para la tipología de datos adicional. |
 | `quantfolio.constants` | Constantes compartidas (sesiones por año, umbrales de diagnóstico, etc.). |

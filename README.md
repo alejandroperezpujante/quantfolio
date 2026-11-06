@@ -156,6 +156,7 @@ Un **cartera de inversión** es una colección de activos junto con la fracción
 |---|---|---:|---|---|
 | Yahoo Finance | `YahooFinanceSource` | acciones, ETF y índices | no | `AAPL`, `SPY`, `^GSPC`, `^IBEX` |
 | Kraken | `KrakenSource` | criptomonedas (OHLC diario) | no | `BTC/USD`, `ETHUSD` |
+| Alpha Vantage (opcional) | `AlphaVantageSource` | acciones, índices, FX, cripto y materias primas diarias | `ALPHA_VANTAGE_API_KEY` | `IBM`, `FX:EUR/USD`, `COMMODITY:WTI` |
 | FRED | `FredMacroSource` | indicadores macro y tipos de interés | no | `DGS10`, `CPIAUCSL` |
 | Caché CSV local | `CachedPriceSource` | envoltorio sobre cualquier proveedor | no | — |
 
@@ -166,6 +167,25 @@ descargar varias series a partir de una lista de activos (en lote, secuencial).
 `CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker>.csv`; el archivo se
 reutiliza mientras empiece antes de la fecha solicitada y su último dato siga vigente (margen configurable con
 `ttl_days`), y se reemplaza en caso contrario o con `refresh=True`.
+
+### Alpha Vantage opcional
+
+`create_price_source_registry()` devuelve un registro inmutable con `yahoo`, `kraken` y, solo tras una validación
+correcta, `alpha-vantage`. Configure la clave como variable de proceso (sin cargador `.env`):
+`export ALPHA_VANTAGE_API_KEY='...'`. Si falta, está agotada o no es válida, se avisa en español y el trabajo sigue
+con las fuentes disponibles; no hay fallback automático.
+
+| Ticker | Semántica diaria |
+|---|---|
+| `IBM` | free: bruto y compacto; premium: ajustado e histórico completo |
+| `INDEX:SP500` / `INDEX:<símbolo>` | exige premium y autorización de índices |
+| `FX:EUR/USD`, `CRYPTO:BTC/EUR` | FX histórico completo y cripto diaria |
+| `COMMODITY:WTI`, `BRENT`, `NATURAL_GAS`, `GOLD`/`XAU`, `SILVER`/`XAG` | materias primas diarias admitidas |
+
+La procedencia indica `free, raw` o `premium, adjusted` para acciones y `(<plan>, daily)` para el resto. El inicio
+siempre valida la clave con una petición; con caché fresca usa una petición, y sin ella dos en free o tres en premium.
+Las capacidades se almacenan 24 horas en `data/alpha-vantage/capabilities/` con una huella SHA-256. Una denegación
+posterior rebaja el plan o deshabilita solo índices, sin reintento ni datos de menor frecuencia.
 
 ## Limpieza y alineación temporal
 
