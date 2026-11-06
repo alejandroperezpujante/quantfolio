@@ -43,6 +43,7 @@ classDiagram
         +float return_assumption = None
         +float volatility_assumption = None
         +int seed = None
+        +int periods_per_year = 252
     }
 
     class PriceSource {
