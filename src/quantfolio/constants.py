@@ -18,7 +18,7 @@ HIGH_VOLATILITY_WARNING_THRESHOLD = 0.25
 #: Maximum drawdown at or below which the report warns about a deep loss.
 DRAWDOWN_WARNING_THRESHOLD = -0.20
 
-#: Largest portfolio weight at or above which the report warns about concentration.
+#: Largest portfolio weight above which the report warns about concentration.
 CONCENTRATION_WARNING_THRESHOLD = 0.50
 
 #: Base value used to normalize portfolio evolution charts.

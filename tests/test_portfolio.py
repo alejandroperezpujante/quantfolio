@@ -463,3 +463,16 @@ def test_report_warns_about_concentration() -> None:
     )
 
     assert "concentra" in portfolio.report()
+
+
+def test_report_does_not_warn_about_a_balanced_two_asset_portfolio() -> None:
+    """A 50/50 two-asset portfolio is not concentrated."""
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", [10.0, 11.0, 12.0]),
+            "BBB": make_series("BBB", [20.0, 19.0, 21.0]),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "concentra" not in portfolio.report()

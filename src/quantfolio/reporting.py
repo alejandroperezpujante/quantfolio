@@ -180,7 +180,7 @@ def _collect_risk_warnings(
             "la simulación puede subestimar episodios de estrés."
         )
     top_ticker, top_weight = max(portfolio.weights.items(), key=lambda item: item[1])
-    if len(portfolio.assets) > 1 and top_weight >= CONCENTRATION_WARNING_THRESHOLD:
+    if len(portfolio.assets) > 1 and top_weight > CONCENTRATION_WARNING_THRESHOLD:
         risk_warnings.append(
             f"{top_ticker} concentra el {top_weight:.1%} de la cartera; "
             "la diversificación es limitada."
