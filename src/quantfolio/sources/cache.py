@@ -16,12 +16,22 @@ def _slug(value: str) -> str:
     return slug.strip("-")
 
 
+def _cache_stem(ticker: str) -> str:
+    """Return a safe cache filename stem for a ticker."""
+    stem = ticker.replace("/", "-").replace("\\", "-").replace("..", "-").strip("-")
+    if not stem:
+        msg = "El ticker no produce un nombre de caché válido."
+        raise ValueError(msg)
+    return stem
+
+
 class CachedPriceSource(PriceSource):
     """Wrap a price source and reuse local CSV files while they are valid.
 
     Files are stored under a provider-specific subdirectory of ``cache_dir``. A cached file is
-    reused only when it starts before the requested start date and its last observation is
-    recent enough for the requested end date.
+    reused only when it starts before the requested start date, its last observation is
+    recent enough for the requested end date, and the ticker stored inside the file matches
+    the requested ticker, so two tickers that sanitize to the same filename never share data.
 
     Args:
         source: Upstream price source used on cache misses.
@@ -71,11 +81,12 @@ class CachedPriceSource(PriceSource):
             The normalized price series, labelled with its provenance.
 
         Raises:
-            ValueError: If the ticker is empty or the upstream source returns no data.
+            ValueError: If the ticker is empty, does not produce a safe cache filename, or
+                the upstream source returns no data.
 
         """
         symbol = validate_ticker(ticker)
-        path = self._cache_dir / _slug(self._source.name) / f"{symbol}.csv"
+        path = self._cache_dir / _slug(self._source.name) / f"{_cache_stem(symbol)}.csv"
         if path.exists() and not self._refresh:
             cached = self._read_cache(path, symbol, start, end)
             if cached is not None:
@@ -92,17 +103,36 @@ class CachedPriceSource(PriceSource):
         end: DateLike | None,
     ) -> PriceSeries | None:
         """Return a cached series when it covers the requested window, else ``None``."""
-        try:
-            frame = pd.read_csv(path, index_col="Date", parse_dates=True, dtype={"Close": float})
-            raw = cast("pd.Series[float]", frame["Close"])
-            cached = PriceSeries(ticker=ticker, prices=raw, source=self.name)
-        except OSError, KeyError, TypeError, ValueError:
+        cached = self._read_cached_series(path, ticker)
+        if cached is None:
             return None
-
         window = self._covered_window(cached, start, end)
         if len(window) < MIN_OBSERVATIONS:
             return None
         return PriceSeries(ticker=ticker, prices=window, source=self.name)
+
+    def _read_cached_series(self, path: Path, ticker: str) -> PriceSeries | None:
+        """Return the cached series when the file belongs to the requested ticker."""
+        try:
+            frame = pd.read_csv(
+                path,
+                index_col="Date",
+                parse_dates=True,
+                dtype={"Close": float, "ticker": str},
+            )
+            if frame.empty or not self._matches_ticker(frame, ticker):
+                return None
+            raw = cast("pd.Series[float]", frame["Close"])
+            return PriceSeries(ticker=ticker, prices=raw, source=self.name)
+        except OSError, KeyError, TypeError, ValueError:
+            return None
+
+    @staticmethod
+    def _matches_ticker(frame: pd.DataFrame, ticker: str) -> bool:
+        """Return whether the cached file was written for the requested ticker."""
+        if "ticker" in frame.columns:
+            return bool(frame["ticker"].iloc[0] == ticker)
+        return _cache_stem(ticker) == ticker
 
     def _covered_window(
         self,
@@ -130,6 +160,8 @@ class CachedPriceSource(PriceSource):
 
     @staticmethod
     def _write_cache(path: Path, asset: PriceSeries) -> None:
-        """Write the close prices of a series to the CSV cache."""
+        """Write the close prices and the ticker identity of a series to the CSV cache."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        asset.prices.rename("Close").to_csv(path, index_label="Date")
+        asset.prices.rename("Close").to_frame().assign(ticker=asset.ticker).to_csv(
+            path, index_label="Date"
+        )
