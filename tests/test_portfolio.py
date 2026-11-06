@@ -388,6 +388,24 @@ def test_report_explains_the_tail_measure_sign_convention() -> None:
     assert "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._" in report
 
 
+def test_report_includes_sample_period_and_per_asset_coverage() -> None:
+    """The quality section dates the sample and lists every asset."""
+    report = build_portfolio().report()
+
+    assert "Periodo de la muestra" in report
+    assert "Cobertura por activo" in report
+    assert "| AAA | 5 |" in report
+    assert "| BBB | 5 |" in report
+
+
+def test_report_includes_annualized_return_uncertainty() -> None:
+    """The report shows the standard error and the 95 % interval."""
+    report = build_portfolio().report()
+
+    assert "Error estándar de la rentabilidad anualizada" in report
+    assert "IC 95% de la rentabilidad anualizada" in report
+
+
 def test_risk_measures_are_exported_from_the_package_root() -> None:
     """The risk measures are importable from the package root."""
     exported = (
