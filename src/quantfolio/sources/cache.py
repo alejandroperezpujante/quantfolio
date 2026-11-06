@@ -92,7 +92,7 @@ class CachedPriceSource(PriceSource):
             if cached is not None:
                 return cached
         asset = self._source.get_prices(symbol, start, end)
-        self._write_cache(path, asset)
+        self._write_cache(path, asset, symbol)
         return asset
 
     def _read_cache(
@@ -159,9 +159,9 @@ class CachedPriceSource(PriceSource):
         return window
 
     @staticmethod
-    def _write_cache(path: Path, asset: PriceSeries) -> None:
-        """Write the close prices and the ticker identity of a series to the CSV cache."""
+    def _write_cache(path: Path, asset: PriceSeries, symbol: str) -> None:
+        """Write the close prices and the requested ticker of a series to the CSV cache."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        asset.prices.rename("Close").to_frame().assign(ticker=asset.ticker).to_csv(
+        asset.prices.rename("Close").to_frame().assign(ticker=symbol).to_csv(
             path, index_label="Date"
         )

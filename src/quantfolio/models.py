@@ -106,7 +106,8 @@ class PriceSeries:
 
         The annualized return is the arithmetic approximation ``mean * periods_per_year``.
         Drawdown and Sharpe are delegated to :mod:`quantfolio.risk` with a zero risk-free
-        rate, so a single asset and a portfolio are measured on the same basis.
+        rate, so a single asset and a portfolio are measured on the same basis as
+        ``Portfolio.max_drawdown()`` and ``Portfolio.sharpe_ratio()``.
 
         Args:
             periods_per_year: Number of trading periods per year used to annualize.

@@ -326,8 +326,9 @@ class Portfolio:
             Markdown text with composition, metrics, diagnostics and risk warnings.
 
         Raises:
-            ValueError: If ``periods_per_year`` is not positive or ``confidence`` is not
-                strictly between zero and one.
+            ValueError: If ``periods_per_year`` is not positive, ``confidence`` is not
+                strictly between zero and one, or the assets share fewer than two dates
+                (disjoint calendars).
 
         """
         return render_portfolio_report(

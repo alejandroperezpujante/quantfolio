@@ -438,6 +438,20 @@ def test_report_warns_about_high_volatility() -> None:
     assert "volatilidad anualizada" in portfolio.report()
 
 
+def test_report_does_not_warn_about_low_volatility() -> None:
+    """Small daily moves stay below the high-volatility threshold."""
+    prices = [100.0, 100.5, 100.2, 100.7, 100.4, 100.9]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "La volatilidad anualizada es" not in portfolio.report()
+
+
 def test_report_warns_about_deep_drawdown() -> None:
     """A 30 % fall from the peak is flagged."""
     prices = [100.0, 90.0, 80.0, 70.0, 75.0, 80.0]
@@ -450,6 +464,20 @@ def test_report_warns_about_deep_drawdown() -> None:
     )
 
     assert "máxima caída" in portfolio.report()
+
+
+def test_report_does_not_warn_about_a_shallow_drawdown() -> None:
+    """A 5 % drawdown stays above the deep-drawdown threshold."""
+    prices = [100.0, 95.0, 97.0]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "La máxima caída histórica es" not in portfolio.report()
 
 
 def test_report_warns_about_concentration() -> None:
@@ -588,6 +616,25 @@ def test_alignment_summary_reports_multi_day_returns() -> None:
     assert summary["multi_day_returns"] == 1
     assert summary["multi_day_share"] == pytest.approx(0.5)
     assert summary["max_gap_days"] == 3
+
+
+def test_report_uses_the_singular_unit_for_a_one_day_gap() -> None:
+    """A maximum gap of one day reads "día", not "días"."""
+    dates = pd.date_range("2025-01-02", periods=3)
+    prices = pd.Series([10.0, 11.0, 12.0], index=dates)
+    portfolio = Portfolio(
+        assets={
+            "AAA": PriceSeries(ticker="AAA", prices=prices),
+            "BBB": PriceSeries(ticker="BBB", prices=prices * 2.0),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    report = portfolio.report()
+
+    assert portfolio.alignment_summary()["max_gap_days"] == 1
+    assert "máximo 1 día" in report
+    assert "máximo 1 días" not in report
 
 
 def test_report_warns_about_multi_day_return_intervals() -> None:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self, cast
 import pandas as pd
 import pytest
 
+from quantfolio.models import PriceSeries
 from quantfolio.sources.base import DateLike, PriceSource, naive_timestamp, validate_ticker
 from quantfolio.sources.cache import CachedPriceSource
 from quantfolio.sources.kraken import KrakenSource
@@ -14,8 +15,6 @@ from tests.helpers import TRADING_DATES, StubSource
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from quantfolio.models import PriceSeries
 
 
 def test_validate_ticker_strips_whitespace() -> None:
@@ -434,6 +433,31 @@ def test_kraken_source_accepts_full_responses_covering_the_start(
 
     assert asset.prices.index.min() == pd.Timestamp("2024-10-27")
     assert len(asset.prices) == 720
+
+
+class NormalizingSource(StubSource):
+    """Stub source that labels every series with a normalized ticker."""
+
+    def get_prices(
+        self,
+        ticker: str,
+        start: DateLike,
+        end: DateLike | None = None,
+    ) -> PriceSeries:
+        """Return a series whose ticker differs from the requested one."""
+        asset = super().get_prices(ticker, start, end)
+        return PriceSeries(ticker="NORMALIZED", prices=asset.prices, source=self.name)
+
+
+def test_cache_stamps_the_requested_ticker(tmp_path: Path) -> None:
+    """A provider that normalizes its ticker still hits the cache on the second call."""
+    upstream = NormalizingSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    cached.get_prices("RAW", "2025-01-02", "2025-02-27")
+    cached.get_prices("RAW", "2025-01-02", "2025-02-27")
+
+    assert upstream.calls == 1
 
 
 def test_cache_writes_and_reuses_csv(tmp_path: Path) -> None:

@@ -17,6 +17,7 @@ classDiagram
         +str source
         +float mean_price
         +float std_price
+        +summary(periods_per_year) dict
         +simulate_monte_carlo(parameters) DataFrame
         +plot_simulation(simulations, max_paths) None
     }
@@ -28,10 +29,15 @@ classDiagram
         +get_returns() DataFrame
         +alignment_summary() dict
         +portfolio_returns() Series
+        +return_gaps() Series
         +summary(periods_per_year) dict
+        +max_drawdown() float
+        +sharpe_ratio(risk_free_rate, periods_per_year) float
+        +value_at_risk(confidence) float
+        +conditional_value_at_risk(confidence) float
         +simulate_monte_carlo(parameters) DataFrame
         +plot_simulation(simulations, max_paths) None
-        +report(periods_per_year, include_quality, include_warnings) str
+        +report(periods_per_year, include_quality, include_warnings, risk_free_rate, confidence) str
         +plots_report() None
     }
 
@@ -187,6 +193,7 @@ cuatro clases en una cartera diversificada.
 |---|---|
 | `quantfolio.models` | `PriceSeries` (limpieza, estadísticos automáticos) y utilidades numéricas. |
 | `quantfolio.portfolio` | `Portfolio`: validación de pesos, alineación temporal, métricas, informe y Monte Carlo. |
+| `quantfolio.risk` | Medidas de riesgo puras: drawdown, Sharpe, CAGR, error estándar de la deriva y VaR/CVaR históricos. |
 | `quantfolio.simulation` | `MonteCarloParameters` y el motor GBM compartido por activo y cartera. |
 | `quantfolio.reporting` | Generación del informe Markdown y de todas las visualizaciones. |
 | `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken, Alpha Vantage) y caché CSV. |
