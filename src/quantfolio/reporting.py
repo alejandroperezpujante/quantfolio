@@ -36,7 +36,9 @@ def render_portfolio_report(
 
     The report degrades gracefully: when the aligned sample is too short to estimate the
     metrics, or their computation overflows, the metrics section is replaced by an
-    explanatory note and the risk warnings skip the volatility and drawdown checks.
+    explanatory note and the risk warnings skip the volatility and drawdown checks. A
+    one-return sample is reported this way; assets with disjoint calendars still raise from
+    ``portfolio_returns()``.
 
     Args:
         portfolio: Portfolio to report on.
@@ -52,11 +54,15 @@ def render_portfolio_report(
         Markdown text with composition, metrics, diagnostics and risk warnings.
 
     Raises:
-        ValueError: If ``periods_per_year`` is not positive.
+        ValueError: If ``periods_per_year`` is not positive or ``confidence`` is not strictly
+            between zero and one.
 
     """
     if periods_per_year < 1:
         msg = "periods_per_year debe ser al menos uno."
+        raise ValueError(msg)
+    if not 0.0 < confidence < 1.0:
+        msg = "confidence debe estar entre 0 y 1."
         raise ValueError(msg)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()

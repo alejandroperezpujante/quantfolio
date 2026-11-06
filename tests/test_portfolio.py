@@ -528,6 +528,14 @@ def test_report_rejects_non_positive_annualization_factor() -> None:
         portfolio.report(periods_per_year=0)
 
 
+def test_report_rejects_invalid_confidence() -> None:
+    """The report rejects a confidence outside (0, 1)."""
+    portfolio = build_portfolio()
+
+    with pytest.raises(ValueError, match="confidence"):
+        portfolio.report(confidence=1.5)
+
+
 def test_report_degrades_when_the_metrics_overflow() -> None:
     """Absurd but finite returns overflow the log drift; the report still renders."""
     prices = [1.0, 300.0, 301.0]
@@ -544,4 +552,5 @@ def test_report_degrades_when_the_metrics_overflow() -> None:
 
     assert report.startswith("# Informe de la cartera")
     assert "Las métricas no se pueden representar" in report
+    assert "Volatilidad anualizada" not in report
     assert "muestra histórica es corta" in report
