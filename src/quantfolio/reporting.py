@@ -10,6 +10,7 @@ from quantfolio.constants import (
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
 )
+from quantfolio.risk import drift_standard_error
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -52,6 +53,10 @@ def render_portfolio_report(
     )
     value_at_risk = portfolio.value_at_risk(confidence=confidence)
     conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=confidence)
+    standard_error = drift_standard_error(returns, periods_per_year=periods_per_year)
+    point_estimate = metrics["annualized_return_approx"]
+    lower = point_estimate - 1.96 * standard_error
+    upper = point_estimate + 1.96 * standard_error
 
     lines = [
         "# Informe de la cartera",
@@ -73,6 +78,8 @@ def render_portfolio_report(
             f"| Volatilidad diaria | {metrics['daily_volatility']:.4%} |",
             f"| Rentabilidad anualizada aproximada | {metrics['annualized_return_approx']:.2%} |",
             f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
+            f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
+            f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
             f"| Máxima caída histórica | {drawdown:.2%} |",
             f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
             f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
@@ -99,6 +106,25 @@ def render_portfolio_report(
                 f"- Cobertura tras la alineación: {quality['coverage']:.1%}",
                 f"- Observaciones de rentabilidad: {len(returns)}",
             ]
+        )
+        start = returns.index.min()
+        end = returns.index.max()
+        years = len(returns) / periods_per_year
+        lines.extend(
+            [
+                f"- Periodo de la muestra: {start:%Y-%m-%d} → {end:%Y-%m-%d}",
+                f"- Años de historia: {years:.2f}",
+                "",
+                "**Cobertura por activo**",
+                "",
+                "| Activo | Observaciones | Inicio | Fin |",
+                "|---|---:|---|---|",
+            ]
+        )
+        lines.extend(
+            f"| {ticker} | {len(asset.prices)} | "
+            f"{asset.prices.index.min():%Y-%m-%d} | {asset.prices.index.max():%Y-%m-%d} |"
+            for ticker, asset in portfolio.assets.items()
         )
         section += 1
 
