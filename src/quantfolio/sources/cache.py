@@ -29,8 +29,9 @@ class CachedPriceSource(PriceSource):
     """Wrap a price source and reuse local CSV files while they are valid.
 
     Files are stored under a provider-specific subdirectory of ``cache_dir``. A cached file is
-    reused only when it starts before the requested start date and its last observation is
-    recent enough for the requested end date.
+    reused only when it starts before the requested start date, its last observation is
+    recent enough for the requested end date, and the ticker stored inside the file matches
+    the requested ticker, so two tickers that sanitize to the same filename never share data.
 
     Args:
         source: Upstream price source used on cache misses.
@@ -104,6 +105,13 @@ class CachedPriceSource(PriceSource):
         """Return a cached series when it covers the requested window, else ``None``."""
         try:
             frame = pd.read_csv(path, index_col="Date", parse_dates=True, dtype={"Close": float})
+            if frame.empty:
+                return None
+            if "ticker" in frame.columns:
+                if frame["ticker"].iloc[0] != ticker:
+                    return None
+            elif _cache_stem(ticker) != ticker:
+                return None
             raw = cast("pd.Series[float]", frame["Close"])
             cached = PriceSeries(ticker=ticker, prices=raw, source=self.name)
         except OSError, KeyError, TypeError, ValueError:
@@ -140,6 +148,8 @@ class CachedPriceSource(PriceSource):
 
     @staticmethod
     def _write_cache(path: Path, asset: PriceSeries) -> None:
-        """Write the close prices of a series to the CSV cache."""
+        """Write the close prices and the ticker identity of a series to the CSV cache."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        asset.prices.rename("Close").to_csv(path, index_label="Date")
+        asset.prices.rename("Close").to_frame().assign(ticker=asset.ticker).to_csv(
+            path, index_label="Date"
+        )

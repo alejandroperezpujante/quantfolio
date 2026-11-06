@@ -572,3 +572,56 @@ def test_cache_rejects_unsafe_ticker_stems(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="caché"):
         cached.get_prices("../", "2025-01-02", "2025-02-27")
+
+
+def test_cache_does_not_reuse_a_file_from_a_colliding_ticker(tmp_path: Path) -> None:
+    """Tickers that sanitize to the same stem do not share cached prices."""
+    upstream = StubSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    cached.get_prices("BTC/USD", "2025-01-02", "2025-02-27")
+    cached.get_prices("BTC-USD", "2025-01-02", "2025-02-27")
+
+    assert upstream.calls == 2
+    frame = pd.read_csv(tmp_path / "stub" / "BTC-USD.csv")
+    assert frame["ticker"].iloc[0] == "BTC-USD"
+
+
+def test_cache_sanitizes_backslashes(tmp_path: Path) -> None:
+    """A backslash in a ticker is sanitized like a slash."""
+    cached = CachedPriceSource(StubSource(TRADING_DATES), cache_dir=tmp_path)
+
+    cached.get_prices("BTC\\USD", "2025-01-02", "2025-02-27")
+
+    assert (tmp_path / "stub" / "BTC-USD.csv").exists()
+
+
+def test_cache_ignores_empty_files(tmp_path: Path) -> None:
+    """A cache file without observations is replaced by a fresh download."""
+    path = tmp_path / "stub" / "AAA.csv"
+    path.parent.mkdir(parents=True)
+    path.write_text("Date,Close,ticker\n", encoding="utf-8")
+    upstream = StubSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    asset = cached.get_prices("AAA", "2025-01-02", "2025-02-27")
+
+    assert upstream.calls == 1
+    assert asset.source == "Stub"
+
+
+def test_cache_does_not_trust_legacy_files_for_sanitized_tickers(tmp_path: Path) -> None:
+    """A file without a ticker column is ignored when the ticker needed sanitizing."""
+    path = tmp_path / "stub" / "BTC-USD.csv"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({"Date": TRADING_DATES[:5], "Close": [10.0, 11.0, 12.0, 13.0, 14.0]}).to_csv(
+        path, index=False
+    )
+    upstream = StubSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    asset = cached.get_prices("BTC/USD", "2025-01-02", "2025-02-27")
+
+    assert upstream.calls == 1
+    assert asset.source == "Stub"
+    assert pd.read_csv(path)["ticker"].iloc[0] == "BTC/USD"
