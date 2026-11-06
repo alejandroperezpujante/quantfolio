@@ -85,10 +85,11 @@ classDiagram
         +str series_id
         +Series~float~ values
         +str source
+        +Timestamp~None~ vintage_date
     }
 
     class FredMacroSource {
-        +get_series(series_id, start, end) MacroSeries
+        +get_series(series_id, start, end, as_of) MacroSeries
     }
 
     class simulation {
@@ -124,7 +125,10 @@ classDiagram
 que la capa de análisis nunca depende de una API concreta. `PriceSeries` y `Portfolio` son las DataClasses del
 modelo; `MonteCarloParameters` concentra la parametrización del motor `simulation.py`, y `reporting.py` contiene
 los helpers de Markdown y gráficos que los métodos públicos delegan. `FredMacroSource`/`MacroSeries` cubren la
-tipología de datos adicional (macroeconomía y tipos de interés).
+tipología de datos adicional (macroeconomía y tipos de interés): las descargas pasan por el endpoint de archivo de
+ALFRED, cada `MacroSeries` registra en `vintage_date` el vintage del que proceden sus valores y `as_of` recupera los
+valores punto-en-el-tiempo publicados hasta una fecha; si el vintage servido no coincide con el solicitado, la
+descarga falla con `ValueError` en lugar de etiquetar mal la serie.
 
 ## Flujo del sistema
 
@@ -187,5 +191,5 @@ cuatro clases en una cartera diversificada.
 | `quantfolio.reporting` | Generación del informe Markdown y de todas las visualizaciones. |
 | `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken, Alpha Vantage) y caché CSV. |
 | `quantfolio.runtime` | Registro inmutable y descubrimiento opcional de Alpha Vantage; FRED permanece separado. |
-| `quantfolio.macro` | `MacroSeries` y proveedor FRED para la tipología de datos adicional. |
+| `quantfolio.macro` | `MacroSeries` y proveedor FRED vía ALFRED, con vintages punto-en-el-tiempo, para la tipología de datos adicional. |
 | `quantfolio.constants` | Constantes compartidas (sesiones por año, umbrales de diagnóstico, etc.). |
