@@ -1,5 +1,6 @@
 """Markdown reports and analytical plots for portfolios and simulations."""
 
+import math
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -13,7 +14,8 @@ from quantfolio.constants import (
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
 )
-from quantfolio.risk import drift_standard_error
+from quantfolio.risk import compound_annual_growth, drift_standard_error
+from quantfolio.simulation import annualized_log_assumptions
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -60,6 +62,9 @@ def render_portfolio_report(
     point_estimate = metrics["annualized_return_approx"]
     lower = point_estimate - 1.96 * standard_error
     upper = point_estimate + 1.96 * standard_error
+    cagr = compound_annual_growth(returns, periods_per_year=periods_per_year)
+    log_drift, _ = annualized_log_assumptions(returns, periods_per_year=periods_per_year)
+    median_growth = math.exp(log_drift) - 1.0
 
     lines = [
         "# Informe de la cartera",
@@ -83,6 +88,9 @@ def render_portfolio_report(
             f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
             f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
             f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
+            f"| Rentabilidad geométrica (CAGR) | {cagr:.2%} |",
+            f"| Deriva del logaritmo usada por Monte Carlo | {log_drift:.2%} |",
+            f"| Crecimiento mediano implícito (exp(m)-1) | {median_growth:.2%} |",
             f"| Máxima caída histórica | {max_drawdown:.2%} |",
             f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
             f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
@@ -93,6 +101,11 @@ def render_portfolio_report(
         [
             "",
             "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._",
+            "",
+            (
+                "_La simulación usa la deriva del logaritmo; su mediana crece a exp(m)-1, "
+                "no a la rentabilidad aritmética._"
+            ),
         ]
     )
 
