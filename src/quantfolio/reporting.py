@@ -10,6 +10,7 @@ from quantfolio.constants import (
     CONCENTRATION_WARNING_THRESHOLD,
     DRAWDOWN_WARNING_THRESHOLD,
     HIGH_VOLATILITY_WARNING_THRESHOLD,
+    MULTI_DAY_RETURNS_WARNING_THRESHOLD,
     PERFORMANCE_BASE,
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
@@ -105,35 +106,13 @@ def render_portfolio_report(
     section = 3
     if include_quality:
         lines.extend(
-            [
-                "",
-                f"## {section}. Calidad de los datos",
-                "",
-                f"- Activos: {len(portfolio.assets)}",
-                f"- Fechas en la unión de calendarios: {quality['union_dates']}",
-                f"- Fechas comunes a todos los activos: {quality['common_dates']}",
-                f"- Cobertura tras la alineación: {quality['coverage']:.1%}",
-                f"- Observaciones de rentabilidad: {len(returns)}",
-            ]
-        )
-        start = returns.index.min()
-        end = returns.index.max()
-        years = len(returns) / periods_per_year
-        lines.extend(
-            [
-                f"- Periodo de la muestra: {start:%Y-%m-%d} → {end:%Y-%m-%d}",
-                f"- Años de historia: {years:.2f}",
-                "",
-                "**Cobertura por activo**",
-                "",
-                "| Activo | Observaciones | Inicio | Fin |",
-                "|---|---:|---|---|",
-            ]
-        )
-        lines.extend(
-            f"| {ticker} | {len(asset.prices)} | "
-            f"{asset.prices.index.min():%Y-%m-%d} | {asset.prices.index.max():%Y-%m-%d} |"
-            for ticker, asset in portfolio.assets.items()
+            _render_quality_section(
+                portfolio,
+                quality=quality,
+                returns=returns,
+                periods_per_year=periods_per_year,
+                section=section,
+            )
         )
         section += 1
 
@@ -151,6 +130,59 @@ def render_portfolio_report(
         )
 
     return "\n".join(lines)
+
+
+def _render_quality_section(
+    portfolio: Portfolio,
+    *,
+    quality: dict[str, float | int],
+    returns: pd.Series[float],
+    periods_per_year: int,
+    section: int,
+) -> list[str]:
+    """Render the data-quality diagnostics section.
+
+    Args:
+        portfolio: Portfolio being reported, which supplies the per-asset coverage.
+        quality: Alignment summary returned by ``Portfolio.alignment_summary``.
+        returns: Portfolio returns, used for the sample length and its date range.
+        periods_per_year: Number of trading periods per year used to express the history.
+        section: Number assigned to the section in the report.
+
+    Returns:
+        Markdown lines of the quality section, per-asset coverage table included.
+
+    """
+    start = returns.index.min()
+    end = returns.index.max()
+    years = len(returns) / periods_per_year
+    lines = [
+        "",
+        f"## {section}. Calidad de los datos",
+        "",
+        f"- Activos: {len(portfolio.assets)}",
+        f"- Fechas en la unión de calendarios: {quality['union_dates']}",
+        f"- Fechas comunes a todos los activos: {quality['common_dates']}",
+        f"- Cobertura tras la alineación: {quality['coverage']:.1%}",
+        (
+            f"- Intervalos entre retornos que abarcan más de un día natural: "
+            f"{quality['multi_day_share']:.1%} (máximo {quality['max_gap_days']} días)"
+        ),
+        f"- Observaciones de rentabilidad: {len(returns)}",
+        f"- Periodo de la muestra: {start:%Y-%m-%d} → {end:%Y-%m-%d}",
+        f"- Años de historia: {years:.2f}",
+        "",
+        "**Cobertura por activo**",
+        "",
+        "| Activo | Observaciones | Inicio | Fin |",
+        "|---|---:|---|---|",
+    ]
+    lines.extend(
+        f"| {ticker} | {len(asset.prices)} | "
+        f"{asset.prices.index.min():%Y-%m-%d} | {asset.prices.index.max():%Y-%m-%d} |"
+        for ticker, asset in portfolio.assets.items()
+    )
+    return lines
 
 
 def _render_metrics_section(
@@ -250,6 +282,12 @@ def _collect_risk_warnings(
         risk_warnings.append(
             f"La alineación temporal descarta el {(1.0 - coverage):.1%} de las fechas; "
             "las métricas solo usan días hábiles comunes a todos los activos."
+        )
+    multi_day_share = float(quality["multi_day_share"])
+    if multi_day_share > MULTI_DAY_RETURNS_WARNING_THRESHOLD:
+        risk_warnings.append(
+            f"El {multi_day_share:.1%} de los intervalos entre retornos abarca "
+            "más de un día natural; la anualización con 252 o 365 periodos es aproximada."
         )
     if len(portfolio.assets) == 1:
         risk_warnings.append(
