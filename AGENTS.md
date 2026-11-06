@@ -28,8 +28,7 @@ repository now contains the toolkit implementation, its tests and its documentat
 - `.python-version` pins 3.14; `pyproject.toml` requires `>=3.14`. Do not raise the target
   to a pre-release Python without explicit instruction.
 - Add dependencies with `uv add <pkg>` and `uv add --dev <pkg>`.
-- Runtime libraries available: numpy, pandas, matplotlib, seaborn, scipy, scikit-learn, plotly,
-  openpyxl, jupyter and yfinance.
+- Runtime libraries available: numpy, pandas, matplotlib, jupyter, ipykernel and yfinance.
 
 ## Quality gates (must pass before any commit)
 
