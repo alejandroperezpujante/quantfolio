@@ -117,7 +117,7 @@ tipología de datos adicional (macroeconomía y tipos de interés).
 ```mermaid
 flowchart LR
     subgraph entrypoint["Punto de entrada (notebooks/)"]
-        NB["quantfolio_demo.ipynb"]
+        NB["quantfolio_demo.ipynb<br/>portfolio_stocks.ipynb<br/>portfolio_indices.ipynb<br/>portfolio_fixed_income.ipynb<br/>portfolio_crypto.ipynb"]
     end
 
     subgraph ingestion["Ingesta y estandarización (sources/, macro.py)"]
@@ -148,11 +148,13 @@ flowchart LR
     MC --> RP
 ```
 
-**Flujo típico.** El cuaderno crea los proveedores y descarga las series (en lotes con `get_many()`, con caché
-opcional). Cada proveedor normaliza su respuesta en `PriceSeries`, que limpia los datos y calcula sus estadísticos
-al construirse. Con varias series se instancia `Portfolio`, que valida y normaliza los pesos y alinea los
-calendarios. Sobre la cartera se calculan métricas, se genera el informe y los gráficos (`reporting.py`) y se lanza
-la simulación Monte Carlo (`simulation.py`), cuyos resultados también se visualizan.
+**Flujo típico.** Los cuadernos crean los proveedores y descargan las series (en lotes con `get_many()`, con
+caché opcional). Cada proveedor normaliza su respuesta en `PriceSeries`, que limpia los datos y calcula sus
+estadísticos al construirse. Con varias series se instancia `Portfolio`, que valida y normaliza los pesos y alinea
+los calendarios. Sobre la cartera se calculan métricas, se genera el informe y los gráficos (`reporting.py`) y se
+lanza la simulación Monte Carlo (`simulation.py`), cuyos resultados también se visualizan. Los cuadernos
+`portfolio_*.ipynb` aíslan cada clase de activo; `quantfolio_demo.ipynb` recorre el toolkit completo y compara las
+cuatro clases en una cartera diversificada.
 
 ## Estructura de módulos
 

@@ -55,16 +55,41 @@ informe, los gráficos y las simulaciones de principio a fin:
 uv run jupyter lab notebooks/quantfolio_demo.ipynb
 ```
 
+### Carteras por clase de activo
+
+Cada clase tiene su propio cuaderno reproducible, con la misma estructura de ingesta, informe, gráficos y
+Monte Carlo:
+
+| Cuaderno | Universo | Anualización |
+|---|---|---|
+| [`portfolio_stocks.ipynb`](notebooks/portfolio_stocks.ipynb) | AAPL, JPM, JNJ, XOM, WMT | 252 sesiones |
+| [`portfolio_indices.ipynb`](notebooks/portfolio_indices.ipynb) | SPY, QQQ, IWM, EFA, EEM | 252 sesiones |
+| [`portfolio_fixed_income.ipynb`](notebooks/portfolio_fixed_income.ipynb) | SHY, IEF, TLT, LQD, HYG | 252 sesiones |
+| [`portfolio_crypto.ipynb`](notebooks/portfolio_crypto.ipynb) | BTC/USD, ETH/USD, SOL/USD, ADA/USD | 365 días |
+
+Todos los ejemplos están denominados en USD para no mezclar divisas. El cuaderno de cripto usa 365 periodos
+porque su calendario cotiza todos los días; el resto usa 252 sesiones.
+
 ### Ejemplo mínimo
 
 ```python
-from quantfolio import CachedPriceSource, MonteCarloParameters, Portfolio, YahooFinanceSource
+from quantfolio import (
+    CachedPriceSource,
+    KrakenSource,
+    MonteCarloParameters,
+    Portfolio,
+    YahooFinanceSource,
+)
 
-source = CachedPriceSource(YahooFinanceSource(), cache_dir="data")
-assets = source.get_many(["META", "GOOGL", "IAG.MC", "MC.PA"], start="2025-01-02")
+yahoo = CachedPriceSource(YahooFinanceSource(), cache_dir="data")
+kraken = KrakenSource()
+assets = {
+    **yahoo.get_many(["AAPL", "SPY", "IEF"], start="2025-01-02"),
+    **kraken.get_many(["BTC/USD"], start="2025-01-02"),
+}
 portfolio = Portfolio(
     assets=assets,
-    weights={"META": 0.35, "GOOGL": 0.25, "IAG.MC": 0.20, "MC.PA": 0.20},
+    weights={"AAPL": 0.35, "SPY": 0.30, "IEF": 0.25, "BTC/USD": 0.10},
 )
 
 print(portfolio.report())  # informe Markdown
@@ -89,7 +114,12 @@ portfolio.plot_simulation(simulations)
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
-├── notebooks/               # punto de entrada reproducible (quantfolio_demo.ipynb)
+├── notebooks/               # entry point and dedicated class portfolios
+│   ├── quantfolio_demo.ipynb
+│   ├── portfolio_stocks.ipynb
+│   ├── portfolio_indices.ipynb
+│   ├── portfolio_fixed_income.ipynb
+│   └── portfolio_crypto.ipynb
 ├── tests/                   # suite sin red, con dobles de proveedor
 ├── docs/                    # investigación de fondo y arquitectura
 ├── pyproject.toml           # dependencias y configuración de ruff, mypy y pytest
@@ -297,8 +327,11 @@ aprobatoria.
 
 ## Limitaciones y advertencias
 
-- Los activos del ejemplo cotizan en distintas monedas y **no hay conversión de divisas**: los resultados no
-  representan una cartera monetariamente homogénea.
+- La biblioteca **no convierte divisas**: los ejemplos usan activos denominados en USD para que las
+  comparaciones sean monetariamente homogéneas. Mezclar activos en otras monedas sigue siendo responsabilidad de
+  quien construye la cartera.
+- Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
+  `KrakenSource` lanza un error explicativo en lugar de devolver una serie truncada.
 - La descarga por lotes de `get_many()` es secuencial, no concurrente.
 - Las rentabilidades históricas no garantizan resultados futuros, y el resultado de Monte Carlo depende de los
   supuestos utilizados.
