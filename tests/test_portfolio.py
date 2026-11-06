@@ -208,6 +208,30 @@ def test_monte_carlo_simulation_has_expected_shape() -> None:
     assert (simulations.iloc[0] == 10_000.0).all()
 
 
+def test_simulation_uses_the_configured_periods_per_year() -> None:
+    """The historical estimate follows the simulation calendar."""
+    prices = [100.0, 101.0, 102.01, 103.0301]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    simulations = portfolio.simulate_monte_carlo(
+        MonteCarloParameters(
+            n_paths=1,
+            horizon=365,
+            periods_per_year=365,
+            seed=1,
+        )
+    )
+
+    expected = 10_000.0 * np.exp(float(np.log1p(0.01)) * 365)
+    assert simulations.iloc[-1, 0] == pytest.approx(expected)
+
+
 def test_monte_carlo_simulation_respects_assumptions_and_initial_value() -> None:
     """Explicit return and volatility assumptions drive the paths."""
     simulations = build_portfolio().simulate_monte_carlo(

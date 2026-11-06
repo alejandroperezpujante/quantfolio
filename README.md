@@ -21,8 +21,9 @@ Ortega.
 - **Modelado con DataClasses**: `PriceSeries` calcula media y desviación típica automáticamente al instanciarse;
   `Portfolio` valida y normaliza las ponderaciones y agrega múltiples activos.
 - **Limpieza y alineación temporal** explícitas, con diagnósticos de cobertura sobre fechas comunes.
-- **Monte Carlo parametrizable** (trayectorias, horizonte, valor inicial y supuestos de rentabilidad y volatilidad),
-  aplicable a un activo individual o a la cartera completa, con visualización de trayectorias y distribuciones.
+- **Monte Carlo parametrizable** (trayectorias, horizonte, valor inicial, supuestos de rentabilidad y volatilidad y
+  periodos por año), aplicable a un activo individual o a la cartera completa, con visualización de trayectorias y
+  distribuciones.
 - **Informes** Markdown parametrizables (`.report()`) y panel analítico de gráficos (`.plots_report()`).
 - **Calidad de código**: tipado estricto (`mypy --strict`), `ruff` con todas las reglas activadas, pruebas sin red y
   cobertura de ramas ≥ 80 % (actual: 99 %), hooks de pre-commit e integración continua en GitHub.
@@ -48,23 +49,48 @@ falta configurar `PYTHONPATH` ni marcar carpetas como *sources root*.
 ## Uso
 
 El punto de entrada reproducible del taller es el cuaderno
-[`notebooks/assignment.ipynb`](notebooks/assignment.ipynb), que recorre la ingesta, el modelado, el informe, los
-gráficos y las simulaciones de principio a fin:
+[`notebooks/quantfolio_demo.ipynb`](notebooks/quantfolio_demo.ipynb), que recorre la ingesta, el modelado, el
+informe, los gráficos y las simulaciones de principio a fin:
 
 ```console
-uv run jupyter lab notebooks/assignment.ipynb
+uv run jupyter lab notebooks/quantfolio_demo.ipynb
 ```
+
+### Carteras por clase de activo
+
+Cada clase tiene su propio cuaderno reproducible, con la misma estructura de ingesta, informe, gráficos y
+Monte Carlo:
+
+| Cuaderno | Universo | Anualización |
+|---|---|---|
+| [`portfolio_stocks.ipynb`](notebooks/portfolio_stocks.ipynb) | AAPL, JPM, JNJ, XOM, WMT | 252 sesiones |
+| [`portfolio_indices.ipynb`](notebooks/portfolio_indices.ipynb) | SPY, QQQ, IWM, EFA, EEM | 252 sesiones |
+| [`portfolio_fixed_income.ipynb`](notebooks/portfolio_fixed_income.ipynb) | SHY, IEF, TLT, LQD, HYG | 252 sesiones |
+| [`portfolio_crypto.ipynb`](notebooks/portfolio_crypto.ipynb) | BTC/USD, ETH/USD, SOL/USD, ADA/USD | 365 días |
+
+Todos los ejemplos están denominados en USD para no mezclar divisas. El cuaderno de cripto usa 365 periodos
+porque su calendario cotiza todos los días; el resto usa 252 sesiones.
 
 ### Ejemplo mínimo
 
 ```python
-from quantfolio import CachedPriceSource, MonteCarloParameters, Portfolio, YahooFinanceSource
+from quantfolio import (
+    CachedPriceSource,
+    KrakenSource,
+    MonteCarloParameters,
+    Portfolio,
+    YahooFinanceSource,
+)
 
-source = CachedPriceSource(YahooFinanceSource(), cache_dir="data")
-assets = source.get_many(["META", "GOOGL", "IAG.MC", "MC.PA"], start="2025-01-02")
+yahoo = CachedPriceSource(YahooFinanceSource(), cache_dir="data")
+kraken = KrakenSource()
+assets = {
+    **yahoo.get_many(["AAPL", "SPY", "IEF"], start="2025-01-02"),
+    **kraken.get_many(["BTC/USD"], start="2025-01-02"),
+}
 portfolio = Portfolio(
     assets=assets,
-    weights={"META": 0.35, "GOOGL": 0.25, "IAG.MC": 0.20, "MC.PA": 0.20},
+    weights={"AAPL": 0.35, "SPY": 0.30, "IEF": 0.25, "BTC/USD": 0.10},
 )
 
 print(portfolio.report())  # informe Markdown
@@ -89,7 +115,12 @@ portfolio.plot_simulation(simulations)
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
-├── notebooks/               # punto de entrada reproducible (assignment.ipynb)
+├── notebooks/               # punto de entrada y carteras por clase de activo
+│   ├── quantfolio_demo.ipynb
+│   ├── portfolio_stocks.ipynb
+│   ├── portfolio_indices.ipynb
+│   ├── portfolio_fixed_income.ipynb
+│   └── portfolio_crypto.ipynb
 ├── tests/                   # suite sin red, con dobles de proveedor
 ├── docs/                    # investigación de fondo y arquitectura
 ├── pyproject.toml           # dependencias y configuración de ruff, mypy y pytest
@@ -115,7 +146,7 @@ Un **cartera de inversión** es una colección de activos junto con la fracción
 
 - valida que cada activo tenga ponderación, que las claves coincidan con los tickers y que los pesos sean finitos y
   no negativos;
-- **normaliza** las ponderaciones para que sumen 1 (acepta pesos arbitrarios como `{META: 35, GOOGL: 25, ...}`);
+- **normaliza** las ponderaciones para que sumen 1 (acepta pesos arbitrarios como `{AAPL: 35, SPY: 25, ...}`);
 - agrega los activos en una tabla de precios por fecha, calcula rentabilidades diarias ponderadas y estadísticos
   anualizados, y ofrece informe, gráficos y simulación de Monte Carlo.
 
@@ -123,7 +154,7 @@ Un **cartera de inversión** es una colección de activos junto con la fracción
 
 | Proveedor | Clase | Tipología | Autenticación | Ejemplos de ticker |
 |---|---|---:|---|---|
-| Yahoo Finance | `YahooFinanceSource` | acciones e índices | no | `META`, `IAG.MC`, `^GSPC`, `^IBEX` |
+| Yahoo Finance | `YahooFinanceSource` | acciones, ETF y índices | no | `AAPL`, `SPY`, `^GSPC`, `^IBEX` |
 | Kraken | `KrakenSource` | criptomonedas (OHLC diario) | no | `BTC/USD`, `ETHUSD` |
 | FRED | `FredMacroSource` | indicadores macro y tipos de interés | no | `DGS10`, `CPIAUCSL` |
 | Caché CSV local | `CachedPriceSource` | envoltorio sobre cualquier proveedor | no | — |
@@ -167,8 +198,8 @@ algunos mercados) — una limitación consciente y documentada en lugar de un co
 ## Simulación de Monte Carlo
 
 El motor modela el valor de la cartera (o el precio de un activo) como un **movimiento browniano geométrico**
-(GBM) discreto por sesiones de bolsa, parametrizado con la **deriva del logaritmo** $m$ (rentabilidad
-logarítmica media anualizada) y la volatilidad anualizada $\sigma$:
+(GBM) discreto en periodos de $1/\text{periods\_per\_year}$ años, parametrizado con la **deriva del logaritmo**
+$m$ (rentabilidad logarítmica media anualizada) y la volatilidad anualizada $\sigma$:
 
 $$S_t = S_0 \exp\left(m t + \sigma W_t\right)$$
 
@@ -180,17 +211,20 @@ $\mu = m + \tfrac{1}{2}\sigma^2$ la deriva del proceso de precios; el precio esp
 | Parámetro (`MonteCarloParameters`) | Significado | Valor por defecto |
 |---|---|---|
 | `n_paths` | número de trayectorias | 1 000 |
-| `horizon` | sesiones simuladas | 252 |
+| `horizon` | periodos simulados | 252 |
 | `initial_value` | valor de partida | último precio (activo) / 10 000 (cartera) |
 | `return_assumption` | deriva anualizada del logaritmo, $m$ | estimación histórica |
 | `volatility_assumption` | volatilidad anualizada, $\sigma$ | estimación histórica |
 | `seed` | semilla del generador | `None` (aleatorio) |
+| `periods_per_year` | periodos por año para anualizar y fijar el paso temporal | 252 (365 para cripto) |
 
 Los supuestos históricos se estiman con la media y la desviación típica de las rentabilidades logarítmicas diarias
-multiplicadas por 252 y $\sqrt{252}$. La covarianza entre activos entra en la simulación de la cartera a través de
-su volatilidad estimada, $w^{T}\Sigma w$. La simulación es un **método de `Portfolio`** (`simulate_monte_carlo`) y
-también está disponible en `PriceSeries` para un activo individual; `plot_simulation()` muestra las trayectorias y
-la distribución del valor final.
+multiplicadas por `periods_per_year` y $\sqrt{\text{periods\_per\_year}}$, respectivamente. La covarianza entre
+activos entra en la simulación de la cartera a través de su volatilidad estimada, $w^{T}\Sigma w$. La simulación es
+un **método de `Portfolio`** (`simulate_monte_carlo`) y también está disponible en `PriceSeries` para un activo
+individual; `plot_simulation()` muestra las trayectorias y la distribución del valor final. Los cuadernos de
+acciones, índice y renta fija usan 252; el de cripto usa 365 y un horizonte de 365 pasos para representar un año
+natural.
 
 ## Informes
 
@@ -198,8 +232,8 @@ la distribución del valor final.
   datos y advertencias de riesgo, con opciones `periods_per_year`, `include_quality` e `include_warnings`. Las
   advertencias se derivan del estado real de la cartera (cobertura de alineación, concentración en un único activo
   y longitud de la muestra), no de supuestos fijos.
-- `Portfolio.plots_report()` muestra el panel analítico: evolución de precios, comparativa de rentabilidad
-  acumulada, matriz de correlación y evolución del valor de la cartera (base 100).
+- `Portfolio.plots_report()` muestra el panel analítico: evolución de precios **reajustada a base 100**,
+  comparativa de rentabilidad acumulada, matriz de correlación y evolución del valor de la cartera (base 100).
 - `PriceSeries.plot_simulation()` y `Portfolio.plot_simulation()` visualizan las trayectorias simuladas y la
   distribución del valor final.
 
@@ -297,8 +331,13 @@ aprobatoria.
 
 ## Limitaciones y advertencias
 
-- Los activos del ejemplo cotizan en distintas monedas y **no hay conversión de divisas**: los resultados no
-  representan una cartera monetariamente homogénea.
+- La biblioteca **no convierte divisas**: los ejemplos usan activos denominados en USD para que las
+  comparaciones sean monetariamente homogéneas. Mezclar activos en otras monedas sigue siendo responsabilidad de
+  quien construye la cartera.
+- Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
+  `KrakenSource` lanza un error explicativo en lugar de devolver una serie truncada. Para recuperar el cuaderno,
+  adelanta `START` a una fecha dentro de los últimos ~700 días (por ejemplo `date.today() - timedelta(days=700)`)
+  y mantén la misma fecha en los demás cuadernos para conservar la comparabilidad.
 - La descarga por lotes de `get_many()` es secuencial, no concurrente.
 - Las rentabilidades históricas no garantizan resultados futuros, y el resultado de Monte Carlo depende de los
   supuestos utilizados.

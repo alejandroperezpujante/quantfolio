@@ -45,6 +45,48 @@ def test_plot_portfolio_report_runs_headless(
     assert plt.get_fignums()
 
 
+def test_plot_portfolio_report_rebases_prices_to_100(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every asset starts at the common base on the price panel."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    plot_portfolio_report(_build_portfolio())
+
+    price_axis = plt.gcf().axes[0]
+    first_values = [float(np.asarray(line.get_ydata())[0]) for line in price_axis.lines]
+    assert first_values == pytest.approx([100.0, 100.0])
+    assert price_axis.get_title() == "Evolución de precios (base 100)"
+    assert price_axis.get_ylabel() == "Precio relativo (base 100)"
+
+
+def test_plot_portfolio_report_rebases_staggered_prices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A shorter series still starts at 100 on the common dates."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]),
+            "BBB": make_series("BBB", [20.0, 21.0, 22.0, 23.0], start=3),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    plot_portfolio_report(portfolio)
+
+    price_axis = plt.gcf().axes[0]
+    lines = price_axis.lines
+    assert len(lines) == 2
+    for line in lines:
+        values = np.asarray(line.get_ydata())
+        assert not np.isnan(values).any()
+        assert float(values[0]) == pytest.approx(100.0)
+    assert float(np.asarray(lines[0].get_xdata())[0]) == pytest.approx(
+        float(np.asarray(lines[1].get_xdata())[0])
+    )
+
+
 def test_plot_simulation_paths_runs_headless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

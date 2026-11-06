@@ -13,11 +13,12 @@ from quantfolio.simulation import (
 
 
 def test_monte_carlo_parameters_defaults() -> None:
-    """The default simulation runs one year with 1,000 paths."""
+    """The default simulation runs one 252-period year with 1,000 paths."""
     parameters = MonteCarloParameters()
 
     assert parameters.n_paths == 1_000
     assert parameters.horizon == 252
+    assert parameters.periods_per_year == 252
     assert parameters.initial_value is None
     assert parameters.return_assumption is None
     assert parameters.volatility_assumption is None
@@ -76,6 +77,27 @@ def test_zero_volatility_grows_at_the_assumed_return() -> None:
     np.testing.assert_allclose(paths[:, 1], expected, rtol=1e-12)
 
 
+def test_simulate_gbm_paths_uses_the_configured_periods_per_year() -> None:
+    """A 365-period year grows at the annual rate over 365 steps."""
+    parameters = MonteCarloParameters(
+        n_paths=2,
+        horizon=365,
+        periods_per_year=365,
+        seed=1,
+    )
+
+    paths = simulate_gbm_paths(
+        initial_value=100.0,
+        annual_return=0.05,
+        annual_volatility=0.0,
+        parameters=parameters,
+    )
+
+    expected = 100.0 * np.exp(0.05 * np.arange(366) / 365)
+    np.testing.assert_allclose(paths[:, 0], expected, rtol=1e-12)
+    np.testing.assert_allclose(paths[:, 1], expected, rtol=1e-12)
+
+
 def test_simulated_log_growth_reproduces_the_estimated_drift() -> None:
     """Volatility adds dispersion but no downward bias on the log growth."""
     rng = np.random.default_rng(3)
@@ -100,6 +122,7 @@ def test_simulated_log_growth_reproduces_the_estimated_drift() -> None:
         (100.0, -0.1, MonteCarloParameters(), "volatilidad"),
         (100.0, 0.1, MonteCarloParameters(horizon=0), "horizonte"),
         (100.0, 0.1, MonteCarloParameters(n_paths=0), "trayectorias"),
+        (100.0, 0.1, MonteCarloParameters(periods_per_year=0), "periods_per_year"),
     ],
 )
 def test_simulate_gbm_paths_rejects_invalid_parameters(
@@ -126,6 +149,27 @@ def test_annualized_log_assumptions_of_constant_returns() -> None:
 
     assert annual_return == pytest.approx(float(np.log1p(0.01)) * 252)
     assert annual_volatility == pytest.approx(0.0)
+
+
+def test_annualized_log_assumptions_accepts_a_custom_annualization_factor() -> None:
+    """The drift scales with the configured number of periods per year."""
+    returns = pd.Series([0.01] * 10, dtype=float)
+
+    annual_return, annual_volatility = annualized_log_assumptions(
+        returns,
+        periods_per_year=365,
+    )
+
+    assert annual_return == pytest.approx(float(np.log1p(0.01)) * 365)
+    assert annual_volatility == pytest.approx(0.0)
+
+
+def test_annualized_log_assumptions_rejects_non_positive_periods_per_year() -> None:
+    """The annualization factor must be positive."""
+    returns = pd.Series([0.01, 0.02], dtype=float)
+
+    with pytest.raises(ValueError, match="periods_per_year"):
+        annualized_log_assumptions(returns, periods_per_year=0)
 
 
 def test_annualized_log_assumptions_requires_two_observations() -> None:
