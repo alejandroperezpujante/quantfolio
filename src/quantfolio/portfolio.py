@@ -169,11 +169,30 @@ class Portfolio:
         """Return the maximum peak-to-trough decline of the portfolio."""
         return max_drawdown_of_returns(self.portfolio_returns())
 
-    def sharpe_ratio(self, *, risk_free_rate: float = 0.0) -> float:
-        """Return the annualized Sharpe ratio with an annual risk-free rate."""
+    def sharpe_ratio(
+        self,
+        *,
+        risk_free_rate: float = 0.0,
+        periods_per_year: int = TRADING_DAYS_PER_YEAR,
+    ) -> float:
+        """Return the annualized Sharpe ratio with an annual risk-free rate.
+
+        Args:
+            risk_free_rate: Annual risk-free rate used to compute the excess return.
+            periods_per_year: Number of trading periods per year used to annualize.
+
+        Returns:
+            Annualized mean excess return divided by the annualized volatility.
+
+        Raises:
+            ValueError: If ``periods_per_year`` is not positive or there are fewer than two
+                return observations.
+
+        """
         return sharpe_ratio_of_returns(
             self.portfolio_returns(),
             risk_free_rate=risk_free_rate,
+            periods_per_year=periods_per_year,
         )
 
     def value_at_risk(self, *, confidence: float = 0.95) -> float:
@@ -256,7 +275,9 @@ class Portfolio:
         """Render the portfolio report as structured Markdown.
 
         Args:
-            periods_per_year: Number of trading periods per year used to annualize statistics.
+            periods_per_year: Number of trading periods per year used to annualize the mean
+                return, the volatility and the Sharpe ratio; the VaR and the CVaR are expressed
+                per return period (daily in the examples).
             include_quality: Whether to include the data-quality diagnostics section.
             include_warnings: Whether to include the risk-warnings section.
             risk_free_rate: Annual risk-free rate used by the Sharpe ratio.

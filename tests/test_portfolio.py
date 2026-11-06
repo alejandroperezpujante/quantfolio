@@ -360,12 +360,32 @@ def test_report_includes_risk_metrics() -> None:
 
 
 def test_report_forwards_the_risk_parameters() -> None:
-    """The risk-free rate and the confidence reach the report rows."""
-    report = build_portfolio().report(risk_free_rate=0.02, confidence=0.9)
+    """The risk parameters and the annualization reach the rendered values."""
+    portfolio = build_portfolio()
+    sharpe = portfolio.sharpe_ratio(risk_free_rate=0.02, periods_per_year=252)
+    monthly_sharpe = portfolio.sharpe_ratio(risk_free_rate=0.02, periods_per_year=12)
+    value_at_risk = portfolio.value_at_risk(confidence=0.9)
+    conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=0.9)
 
-    assert "Ratio de Sharpe (rf=2.00%)" in report
-    assert "VaR histórico diario (90%)" in report
-    assert "CVaR histórico diario (90%)" in report
+    report = portfolio.report(risk_free_rate=0.02, confidence=0.9)
+    monthly_report = portfolio.report(
+        periods_per_year=12,
+        risk_free_rate=0.02,
+        confidence=0.9,
+    )
+
+    assert f"| Ratio de Sharpe (rf=2.00%) | {sharpe:.2f} |" in report
+    assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in report
+    assert f"| CVaR histórico diario (90%) | {conditional_value_at_risk:.2%} |" in report
+    assert f"| Ratio de Sharpe (rf=2.00%) | {monthly_sharpe:.2f} |" in monthly_report
+    assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in monthly_report
+
+
+def test_report_explains_the_tail_measure_sign_convention() -> None:
+    """A negative VaR or CVaR means the tail quantile is a gain."""
+    report = build_portfolio().report()
+
+    assert "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._" in report
 
 
 def test_risk_measures_are_exported_from_the_package_root() -> None:
@@ -378,3 +398,9 @@ def test_risk_measures_are_exported_from_the_package_root() -> None:
     )
 
     assert all(callable(measure) for measure in exported)
+    assert set(quantfolio.__all__) >= {
+        "historical_cvar",
+        "historical_var",
+        "max_drawdown",
+        "sharpe_ratio",
+    }
