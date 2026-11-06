@@ -117,7 +117,7 @@ tipología de datos adicional (macroeconomía y tipos de interés).
 ```mermaid
 flowchart LR
     subgraph entrypoint["Punto de entrada (notebooks/)"]
-        NB["assignment.ipynb"]
+        NB["quantfolio_demo.ipynb"]
     end
 
     subgraph ingestion["Ingesta y estandarización (sources/, macro.py)"]

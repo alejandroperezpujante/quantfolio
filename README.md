@@ -48,11 +48,11 @@ falta configurar `PYTHONPATH` ni marcar carpetas como *sources root*.
 ## Uso
 
 El punto de entrada reproducible del taller es el cuaderno
-[`notebooks/assignment.ipynb`](notebooks/assignment.ipynb), que recorre la ingesta, el modelado, el informe, los
-gráficos y las simulaciones de principio a fin:
+[`notebooks/quantfolio_demo.ipynb`](notebooks/quantfolio_demo.ipynb), que recorre la ingesta, el modelado, el
+informe, los gráficos y las simulaciones de principio a fin:
 
 ```console
-uv run jupyter lab notebooks/assignment.ipynb
+uv run jupyter lab notebooks/quantfolio_demo.ipynb
 ```
 
 ### Ejemplo mínimo
@@ -89,7 +89,7 @@ portfolio.plot_simulation(simulations)
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
-├── notebooks/               # punto de entrada reproducible (assignment.ipynb)
+├── notebooks/               # punto de entrada reproducible (quantfolio_demo.ipynb)
 ├── tests/                   # suite sin red, con dobles de proveedor
 ├── docs/                    # investigación de fondo y arquitectura
 ├── pyproject.toml           # dependencias y configuración de ruff, mypy y pytest
