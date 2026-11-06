@@ -1,7 +1,5 @@
 """Tests for the pure risk functions."""
 
-from unittest.mock import Mock
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -73,20 +71,26 @@ def test_historical_var_and_cvar_known_tail() -> None:
 @pytest.mark.parametrize("confidence", [0.0, 1.0, -0.1, 1.1])
 def test_risk_measures_reject_invalid_confidence(confidence: float) -> None:
     """Confidence must be strictly between zero and one."""
+    returns = pd.Series([0.01, -0.01])
+
     with pytest.raises(ValueError, match="confidence"):
-        historical_var(pd.Series([0.01, -0.01]), confidence=confidence)
+        historical_var(returns, confidence=confidence)
 
 
 def test_risk_measures_require_two_returns() -> None:
     """A single return cannot describe a distribution."""
+    returns = pd.Series([0.01])
+
     with pytest.raises(ValueError, match="dos rentabilidades"):
-        max_drawdown(pd.Series([0.01]))
+        max_drawdown(returns)
 
 
 def test_risk_measures_reject_returns_at_or_below_minus_one() -> None:
     """A total loss breaks the log and growth calculations."""
+    returns = pd.Series([0.01, -1.0])
+
     with pytest.raises(ValueError, match="-100"):
-        max_drawdown(pd.Series([0.01, -1.0]))
+        max_drawdown(returns)
 
 
 def test_drawdown_series_is_named_drawdown() -> None:
@@ -107,39 +111,40 @@ def test_sharpe_ratio_subtracts_the_risk_free_rate() -> None:
 
 def test_compound_annual_growth_rejects_invalid_periods_per_year() -> None:
     """The annualization period must be a positive number of periods."""
+    returns = pd.Series([0.01, -0.01])
+
     with pytest.raises(ValueError, match="periods_per_year"):
-        compound_annual_growth(pd.Series([0.01, -0.01]), periods_per_year=0)
+        compound_annual_growth(returns, periods_per_year=0)
 
 
 def test_sharpe_ratio_rejects_invalid_periods_per_year() -> None:
     """The annualization period must be a positive number of periods."""
+    returns = pd.Series([0.01, -0.01])
+
     with pytest.raises(ValueError, match="periods_per_year"):
-        sharpe_ratio(pd.Series([0.01, -0.01]), periods_per_year=-1)
+        sharpe_ratio(returns, periods_per_year=-1)
 
 
 def test_drift_standard_error_rejects_invalid_periods_per_year() -> None:
     """The annualization period must be a positive number of periods."""
+    returns = pd.Series([0.01, -0.01])
+
     with pytest.raises(ValueError, match="periods_per_year"):
-        drift_standard_error(pd.Series([0.01, -0.01]), periods_per_year=0)
+        drift_standard_error(returns, periods_per_year=0)
 
 
 @pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
 def test_risk_measures_reject_non_finite_returns(value: float) -> None:
     """Non-finite returns cannot be aggregated."""
+    returns = pd.Series([0.01, value])
+
     with pytest.raises(ValueError, match="finitas"):
-        historical_var(pd.Series([0.01, value]), confidence=0.95)
+        historical_var(returns, confidence=0.95)
 
 
 def test_historical_cvar_requires_two_returns() -> None:
     """The CVaR validates the sample before looking at the tail."""
+    returns = pd.Series([0.01])
+
     with pytest.raises(ValueError, match="dos rentabilidades"):
-        historical_cvar(pd.Series([0.01]), confidence=0.95)
-
-
-def test_historical_cvar_rejects_an_empty_tail(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An undefined quantile leaves no observations in the tail."""
-    returns = pd.Series([-0.10, 0.0, 0.10])
-    monkeypatch.setattr(pd.Series, "quantile", Mock(return_value=float("nan")))
-
-    with pytest.raises(ValueError, match="cola"):
         historical_cvar(returns, confidence=0.95)

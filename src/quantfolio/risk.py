@@ -221,15 +221,12 @@ def historical_cvar(returns: pd.Series[float], *, confidence: float = 0.95) -> f
         Mean loss (positive number) of the observations in the tail.
 
     Raises:
-        ValueError: If ``confidence`` is not strictly between zero and one, the series is
-            invalid or the tail is empty.
+        ValueError: If ``confidence`` is not strictly between zero and one, or the series is
+            invalid.
 
     """
     _validate_confidence(confidence)
     _validate_returns(returns)
     threshold = returns.quantile(1.0 - confidence)
     tail = returns[returns <= threshold]
-    if tail.empty:
-        msg = "No hay observaciones en la cola para calcular el CVaR."
-        raise ValueError(msg)
     return -float(tail.mean())
