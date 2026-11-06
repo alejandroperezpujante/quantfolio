@@ -67,20 +67,28 @@ and returns `≤ -1` raise `ValueError` with Spanish messages.
 The existing section order stays unchanged, so the current section-number assertions keep passing:
 
 1. Composición
-2. Métricas históricas — existing four rows plus:
-   - Máxima caída histórica
-   - Ratio de Sharpe (rf = …)
-   - VaR histórico diario (95 %)
-   - CVaR histórico diario (95 %)
-   - Rentabilidad geométrica (CAGR)
-   - Deriva del logaritmo usada por Monte Carlo
-   - Crecimiento mediano implícito
-   - Error estándar de la rentabilidad anualizada
-   - IC 95% de la rentabilidad anualizada
+2. Métricas históricas — the four existing rows plus the new ones, in the rendered order:
+   1. Rentabilidad media diaria
+   2. Volatilidad diaria
+   3. Rentabilidad anualizada aproximada
+   4. Volatilidad anualizada
+   5. Error estándar de la rentabilidad anualizada
+   6. IC 95% de la rentabilidad anualizada
+   7. Rentabilidad geométrica (CAGR)
+   8. Deriva del logaritmo usada por Monte Carlo
+   9. Crecimiento mediano implícito (exp(m)-1)
+   10. Máxima caída histórica
+   11. Ratio de Sharpe (rf = …)
+   12. VaR histórico diario (95%)
+   13. CVaR histórico diario (95%)
 3. Calidad de los datos — existing counts plus sample period, years of history, per-asset coverage
    table, and the share of return intervals spanning more than one calendar day.
 4. Advertencias de riesgo — existing warnings plus high volatility, deep drawdown, concentration
-   and mixed-calendar warnings.
+   and multi-day-interval warnings.
+
+After the metrics table the report renders
+`_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._`, because a negative VaR
+or CVaR means the tail quantile is a gain.
 
 `Portfolio.report()` and `render_portfolio_report()` gain keyword-only `risk_free_rate: float = 0.0`
 and `confidence: float = 0.95`. Existing calls remain valid.
@@ -92,7 +100,7 @@ and `confidence: float = 0.95`. Existing calls remain valid.
 | `HIGH_VOLATILITY_WARNING_THRESHOLD` | 0.25 | annualized volatility ≥ 25 % |
 | `DRAWDOWN_WARNING_THRESHOLD` | -0.20 | maximum drawdown ≤ −20 % |
 | `CONCENTRATION_WARNING_THRESHOLD` | 0.50 | largest weight > 50 % |
-| mixed-calendar warning | 0.05 | > 5 % of return intervals span more than one calendar day |
+| multi-day-interval warning | 0.05 | > 5 % of return intervals span more than one calendar day |
 
 `SHORT_HISTORY_WARNING_THRESHOLD = 30` is retained as the "can compute" guard. The new
 annualized-return standard error is the informative signal; a 1.8-year sample will show a wide
@@ -122,8 +130,8 @@ Every notebook defines `END = "2026-11-06"` (exclusive for price sources) and pa
 every price and macro call. Every notebook keeps stored outputs from a single top-to-bottom run after
 the change. A new offline test parses the notebook JSON and asserts the pinned constant, that every
 provider call passes `end=END`, the absence of `pd.Timestamp.now()`, `datetime.now(` and
-`date.today(` in code cells, at least one non-empty output per notebook, and the absence of error
-outputs.
+`date.today(` in code cells, at least one code cell with stored outputs per notebook, and the absence
+of error outputs.
 
 ## Constraints
 

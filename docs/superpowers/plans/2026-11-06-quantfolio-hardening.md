@@ -70,7 +70,7 @@ file.
 ## Review Focus
 
 - **A two-price portfolio must not crash `.report()`.** `summary()` needs two returns; the report must render an "insufficient observations" message instead of raising.
-- **A mixed-calendar portfolio must not hide its approximation.** The report must show how many returns span more than one calendar day and warn when the share exceeds 5 %.
+- **A mixed-calendar portfolio must not hide its approximation.** The report must show how many return intervals span more than one calendar day and warn when the share exceeds 5 %.
 - **A 99 %/1 % portfolio must warn about concentration.** The current check only fires for a single asset.
 - **A high-volatility or deep-drawdown portfolio must warn.** A 65 %-vol crypto portfolio currently gets only the generic warnings.
 - **A ticker containing `/` or `..` must not escape the cache directory.** `BTC/USD` must become a safe filename and `../escape` must stay inside the provider folder.
@@ -428,6 +428,15 @@ In `src/quantfolio/reporting.py`, add `risk_free_rate` and `confidence` keyword 
             f"{portfolio.conditional_value_at_risk(confidence=confidence):.2%} |",
 ```
 
+`render_portfolio_report` reaches six parameters, so `PLR0913` is silenced by the
+`"src/quantfolio/reporting.py" = ["PLR0913"]` entry in `[tool.ruff.lint.per-file-ignores]` of
+`pyproject.toml` (commented "The report renderer mirrors the public `Portfolio.report` signature."),
+not by an inline `# noqa`.
+
+After the table, render the sign note
+`_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._`, so a negative VaR or
+CVaR is not read as a loss.
+
 Update the `Portfolio.report` docstring and pass the two keywords through.
 
 - [ ] **Step 5: Run the portfolio and reporting tests**
@@ -533,7 +542,7 @@ In the metrics section, after the annualized volatility row, add:
         lines.extend(
             [
                 f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
-                f"| IC 95% de la rentabilidad anualizada | {lower:.2%} – {upper:.2%} |",
+                f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
             ]
         )
 ```
@@ -755,6 +764,9 @@ Add to the metrics table:
             f"| Crecimiento mediano implícito (exp(m)-1) | {median_growth:.2%} |",
 ```
 
+The three rows are inserted after the `IC 95% de la rentabilidad anualizada` row and before the
+`Máxima caída histórica` row, which is the order the report renders.
+
 Add a note after the table:
 
 ```python
@@ -832,32 +844,59 @@ Expected: FAIL with `ValueError: Se necesitan al menos dos observaciones de rent
 
 - [ ] **Step 3: Guard the metrics section**
 
-In `render_portfolio_report`, replace the unconditional `metrics = portfolio.summary(...)` with:
+In `render_portfolio_report`, validate the arguments upfront, so an invalid call raises before
+anything is rendered:
 
 ```python
+    if periods_per_year < 1:
+        msg = "periods_per_year debe ser al menos uno."
+        raise ValueError(msg)
+    if not 0.0 < confidence < 1.0:
+        msg = "confidence debe estar entre 0 y 1."
+        raise ValueError(msg)
+```
+
+Then wrap the three calls that need at least two returns — `portfolio.summary(...)`,
+`portfolio.max_drawdown()` and `_render_metrics_section(...)` — in a single `try`:
+
+```python
+    returns = portfolio.portfolio_returns()
+    quality = portfolio.alignment_summary()
+    metrics: dict[str, float] | None = None
+    max_drawdown: float | None = None
+    metrics_note = "No hay suficientes observaciones para calcular métricas históricas."
+    metrics_lines: list[str] | None = None
     try:
         metrics = portfolio.summary(periods_per_year=periods_per_year)
+        max_drawdown = portfolio.max_drawdown()
+        metrics_lines = _render_metrics_section(
+            portfolio,
+            metrics=metrics,
+            returns=returns,
+            periods_per_year=periods_per_year,
+            risk_free_rate=risk_free_rate,
+            confidence=confidence,
+        )
     except ValueError:
         metrics = None
+        max_drawdown = None
+    except OverflowError:
+        metrics = None
+        max_drawdown = None
+        metrics_note = "Las métricas no se pueden representar: rentabilidad extrema."
+    if metrics_lines is None:
+        metrics_lines = ["", "## 2. Métricas históricas", "", metrics_note]
 ```
 
-Render the metrics section conditionally:
+`ValueError` covers the short sample (`summary()` needs two returns) and `OverflowError` covers an
+extreme return whose CAGR or log drift cannot be represented; both handlers leave the report without
+metrics, and the overflow case replaces the default note with the reason. Render `metrics_lines`
+where the table used to be, so the `## 3. Calidad de los datos` and `## 4. Advertencias de riesgo`
+numbering does not move.
 
-```python
-    if metrics is None:
-        lines.extend(
-            [
-                "",
-                "## 2. Métricas históricas",
-                "",
-                "No hay suficientes observaciones para calcular métricas históricas.",
-            ]
-        )
-    else:
-        # existing table plus the Task 2-5 rows
-```
-
-The risk-metric calls in Task 2 also depend on `metrics`; skip them when `metrics is None`. The warnings function must accept `metrics: dict[str, float] | None` and skip the volatility/drawdown branches when it is `None`; the short-history warning still fires.
+`_collect_risk_warnings` must accept `metrics: dict[str, float] | None` and
+`max_drawdown: float | None`; skip the volatility branch when `metrics is None` and the drawdown
+branch when `max_drawdown is None`. The short-history warning still fires.
 
 - [ ] **Step 4: Run the tests**
 

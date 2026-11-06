@@ -56,8 +56,8 @@ informe, los gráficos y las simulaciones de principio a fin:
 uv run jupyter lab notebooks/quantfolio_demo.ipynb
 ```
 
-Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; la última
-sesión disponible depende del mercado (2026-11-05 en EE. UU., 2026-11-06 en Europa).
+Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; como `END` es
+exclusivo, la última sesión incluida es 2026-11-05 en todos los mercados.
 
 ### Carteras por clase de activo
 
@@ -386,6 +386,9 @@ aprobatoria.
 - Las carteras que mezclan calendarios (por ejemplo, cripto y acciones) calculan los retornos
   sobre la intersección de fechas; algunos intervalos entre retornos abarcan varios días naturales
   y la anualización con 252 o 365 periodos es aproximada. El informe muestra el porcentaje afectado.
+  Una cartera de un solo calendario también puede superar el 5 % porque los fines de semana cuentan
+  como días naturales, así que la advertencia describe ese porcentaje medido y no afirma que la
+  cartera mezcle calendarios.
 - Los proveedores externos pueden cambiar sus límites o interfaces (p. ej. Stooq pasó a exigir JavaScript durante
   el desarrollo del taller, por lo que se sustituyó por Kraken, que es una API pública sin clave).
 
@@ -395,7 +398,7 @@ aprobatoria.
 |---|---|
 | Repositorio y despliegue *plug-and-play* | `pyproject.toml` + `uv.lock` (instalación con `uv sync`), README, `.gitignore`, CI. |
 | Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
-| Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados, correlaciones (calculadas en `plots_report`)). |
+| Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados y correlaciones, calculadas en `plots_report`). |
 | Motor Monte Carlo | `Portfolio.simulate_monte_carlo()` y `PriceSeries.simulate_monte_carlo()` con `MonteCarloParameters`; `plot_simulation()`. |
 | Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; sección de validación de entradas en este README. |
 | Estructura y diagramado | `src/` solo biblioteca, `notebooks/` como entrada reproducible y `docs/architecture.md` con los diagramas. |
