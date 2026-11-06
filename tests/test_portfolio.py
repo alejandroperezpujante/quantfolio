@@ -422,3 +422,57 @@ def test_risk_measures_are_exported_from_the_package_root() -> None:
         "max_drawdown",
         "sharpe_ratio",
     }
+
+
+def test_report_warns_about_high_volatility() -> None:
+    """A 20 % daily swing is flagged as high volatility."""
+    prices = [100.0, 120.0, 100.0, 120.0, 100.0, 120.0]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "volatilidad anualizada" in portfolio.report()
+
+
+def test_report_warns_about_deep_drawdown() -> None:
+    """A 30 % fall from the peak is flagged."""
+    prices = [100.0, 90.0, 80.0, 70.0, 75.0, 80.0]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "máxima caída" in portfolio.report()
+
+
+def test_report_warns_about_concentration() -> None:
+    """A 99 %/1 % portfolio is concentrated even with two assets."""
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", [10.0, 11.0, 12.0]),
+            "BBB": make_series("BBB", [20.0, 19.0, 21.0]),
+        },
+        weights={"AAA": 0.99, "BBB": 0.01},
+    )
+
+    assert "concentra" in portfolio.report()
+
+
+def test_report_does_not_warn_about_a_balanced_two_asset_portfolio() -> None:
+    """A 50/50 two-asset portfolio is not concentrated."""
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", [10.0, 11.0, 12.0]),
+            "BBB": make_series("BBB", [20.0, 19.0, 21.0]),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "concentra" not in portfolio.report()
