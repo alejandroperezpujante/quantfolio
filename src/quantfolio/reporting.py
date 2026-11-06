@@ -1,5 +1,6 @@
 """Markdown reports and analytical plots for portfolios and simulations."""
 
+import math
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -13,7 +14,8 @@ from quantfolio.constants import (
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
 )
-from quantfolio.risk import drift_standard_error
+from quantfolio.risk import compound_annual_growth, drift_standard_error
+from quantfolio.simulation import annualized_log_assumptions
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -50,16 +52,6 @@ def render_portfolio_report(
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
     max_drawdown = portfolio.max_drawdown()
-    sharpe = portfolio.sharpe_ratio(
-        risk_free_rate=risk_free_rate,
-        periods_per_year=periods_per_year,
-    )
-    value_at_risk = portfolio.value_at_risk(confidence=confidence)
-    conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=confidence)
-    standard_error = drift_standard_error(returns, periods_per_year=periods_per_year)
-    point_estimate = metrics["annualized_return_approx"]
-    lower = point_estimate - 1.96 * standard_error
-    upper = point_estimate + 1.96 * standard_error
 
     lines = [
         "# Informe de la cartera",
@@ -71,29 +63,14 @@ def render_portfolio_report(
     ]
     lines.extend(f"| {ticker} | {weight:.2%} |" for ticker, weight in portfolio.weights.items())
     lines.extend(
-        [
-            "",
-            "## 2. Métricas históricas",
-            "",
-            "| Métrica | Valor |",
-            "|---|---:|",
-            f"| Rentabilidad media diaria | {metrics['mean_daily_return']:.4%} |",
-            f"| Volatilidad diaria | {metrics['daily_volatility']:.4%} |",
-            f"| Rentabilidad anualizada aproximada | {metrics['annualized_return_approx']:.2%} |",
-            f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
-            f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
-            f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
-            f"| Máxima caída histórica | {max_drawdown:.2%} |",
-            f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
-            f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
-            f"| CVaR histórico diario ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
-        ]
-    )
-    lines.extend(
-        [
-            "",
-            "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._",
-        ]
+        _render_metrics_section(
+            portfolio,
+            metrics=metrics,
+            returns=returns,
+            periods_per_year=periods_per_year,
+            risk_free_rate=risk_free_rate,
+            confidence=confidence,
+        )
     )
 
     section = 3
@@ -145,6 +122,72 @@ def render_portfolio_report(
         )
 
     return "\n".join(lines)
+
+
+def _render_metrics_section(
+    portfolio: Portfolio,
+    *,
+    metrics: dict[str, float],
+    returns: pd.Series[float],
+    periods_per_year: int,
+    risk_free_rate: float,
+    confidence: float,
+) -> list[str]:
+    """Render the historical metrics table and its explanatory notes.
+
+    Args:
+        portfolio: Portfolio being reported, which supplies the risk measures.
+        metrics: Statistics returned by ``Portfolio.summary``.
+        returns: Portfolio returns used to annualize the drift and the growth measures.
+        periods_per_year: Number of trading periods per year used to annualize.
+        risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
+        confidence: Confidence level of the value-at-risk measures.
+
+    Returns:
+        Markdown lines of the metrics section, table and notes included.
+
+    """
+    max_drawdown = portfolio.max_drawdown()
+    sharpe = portfolio.sharpe_ratio(
+        risk_free_rate=risk_free_rate,
+        periods_per_year=periods_per_year,
+    )
+    value_at_risk = portfolio.value_at_risk(confidence=confidence)
+    conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=confidence)
+    standard_error = drift_standard_error(returns, periods_per_year=periods_per_year)
+    point_estimate = metrics["annualized_return_approx"]
+    lower = point_estimate - 1.96 * standard_error
+    upper = point_estimate + 1.96 * standard_error
+    cagr = compound_annual_growth(returns, periods_per_year=periods_per_year)
+    log_drift, _ = annualized_log_assumptions(returns, periods_per_year=periods_per_year)
+    median_growth = math.exp(log_drift) - 1.0
+    return [
+        "",
+        "## 2. Métricas históricas",
+        "",
+        "| Métrica | Valor |",
+        "|---|---:|",
+        f"| Rentabilidad media diaria | {metrics['mean_daily_return']:.4%} |",
+        f"| Volatilidad diaria | {metrics['daily_volatility']:.4%} |",
+        f"| Rentabilidad anualizada aproximada | {metrics['annualized_return_approx']:.2%} |",
+        f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
+        f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
+        f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
+        f"| Rentabilidad geométrica (CAGR) | {cagr:.2%} |",
+        f"| Deriva del logaritmo usada por Monte Carlo | {log_drift:.2%} |",
+        f"| Crecimiento mediano implícito (exp(m)-1) | {median_growth:.2%} |",
+        f"| Máxima caída histórica | {max_drawdown:.2%} |",
+        f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
+        f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
+        f"| CVaR histórico diario ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
+        "",
+        "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._",
+        "",
+        (
+            "_La simulación usa la deriva del logaritmo; su mediana crece a exp(m)-1, "
+            "no a la rentabilidad aritmética._"
+        ),
+    ]
 
 
 def _collect_risk_warnings(

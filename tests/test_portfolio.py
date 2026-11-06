@@ -476,3 +476,26 @@ def test_report_does_not_warn_about_a_balanced_two_asset_portfolio() -> None:
     )
 
     assert "concentra" not in portfolio.report()
+
+
+def test_report_includes_geometric_and_log_drift_measures() -> None:
+    """The report distinguishes arithmetic, geometric and log-drift growth."""
+    prices = [100.0, 101.0, 102.01, 103.0301]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    report = portfolio.report(periods_per_year=252)
+    cagr = 1.01**252 - 1
+    log_drift = float(np.log1p(0.01) * 252)
+
+    assert "Rentabilidad geométrica (CAGR)" in report
+    assert "Deriva del logaritmo usada por Monte Carlo" in report
+    assert "Crecimiento mediano implícito" in report
+    assert f"{cagr:.2%}" in report
+    assert f"{log_drift:.2%}" in report
+    assert f"{np.exp(log_drift) - 1:.2%}" in report
