@@ -87,9 +87,7 @@ def render_portfolio_report(
     except OverflowError:
         metrics = None
         max_drawdown = None
-        metrics_note = (
-            "Las métricas no se pueden representar: la muestra contiene una rentabilidad extrema."
-        )
+        metrics_note = "Las métricas no se pueden representar: rentabilidad extrema."
     if metrics_lines is None:
         metrics_lines = ["", "## 2. Métricas históricas", "", metrics_note]
 
