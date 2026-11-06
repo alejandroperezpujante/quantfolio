@@ -45,6 +45,21 @@ def test_plot_portfolio_report_runs_headless(
     assert plt.get_fignums()
 
 
+def test_plot_portfolio_report_rebases_prices_to_100(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every asset starts at the common base on the price panel."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    plot_portfolio_report(_build_portfolio())
+
+    price_axis = plt.gcf().axes[0]
+    first_values = [float(np.asarray(line.get_ydata())[0]) for line in price_axis.lines]
+    assert first_values == pytest.approx([100.0, 100.0])
+    assert price_axis.get_title() == "Evolución de precios (base 100)"
+    assert price_axis.get_ylabel() == "Precio relativo (base 100)"
+
+
 def test_plot_simulation_paths_runs_headless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
