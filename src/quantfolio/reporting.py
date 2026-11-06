@@ -51,17 +51,19 @@ def render_portfolio_report(
     Returns:
         Markdown text with composition, metrics, diagnostics and risk warnings.
 
+    Raises:
+        ValueError: If ``periods_per_year`` is not positive.
+
     """
+    if periods_per_year < 1:
+        msg = "periods_per_year debe ser al menos uno."
+        raise ValueError(msg)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
     metrics: dict[str, float] | None = None
     max_drawdown: float | None = None
-    metrics_lines = [
-        "",
-        "## 2. Métricas históricas",
-        "",
-        "No hay suficientes observaciones para calcular métricas históricas.",
-    ]
+    metrics_note = "No hay suficientes observaciones para calcular métricas históricas."
+    metrics_lines: list[str] | None = None
     try:
         metrics = portfolio.summary(periods_per_year=periods_per_year)
         max_drawdown = portfolio.max_drawdown()
@@ -73,9 +75,17 @@ def render_portfolio_report(
             risk_free_rate=risk_free_rate,
             confidence=confidence,
         )
-    except ValueError, OverflowError:
+    except ValueError:
         metrics = None
         max_drawdown = None
+    except OverflowError:
+        metrics = None
+        max_drawdown = None
+        metrics_note = (
+            "Las métricas no se pueden representar: la muestra contiene una rentabilidad extrema."
+        )
+    if metrics_lines is None:
+        metrics_lines = ["", "## 2. Métricas históricas", "", metrics_note]
 
     lines = [
         "# Informe de la cartera",
@@ -261,8 +271,10 @@ def _collect_risk_warnings(
             "la diversificación es limitada."
         )
     if len(returns) < SHORT_HISTORY_WARNING_THRESHOLD:
+        observations = "observación" if len(returns) == 1 else "observaciones"
         risk_warnings.append(
-            f"La muestra histórica es corta: solo hay {len(returns)} observaciones de rentabilidad."
+            f"La muestra histórica es corta: solo hay {len(returns)} {observations} "
+            "de rentabilidad."
         )
     return risk_warnings
 

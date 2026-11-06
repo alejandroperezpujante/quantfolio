@@ -517,11 +517,20 @@ def test_report_degrades_gracefully_with_one_return() -> None:
     assert "## 1. Composición" in report
     assert "No hay suficientes observaciones" in report
     assert "## 3. Calidad de los datos" in report
+    assert "solo hay 1 observación de rentabilidad" in report
+
+
+def test_report_rejects_non_positive_annualization_factor() -> None:
+    """The report rejects a non-positive annualization factor."""
+    portfolio = build_portfolio()
+
+    with pytest.raises(ValueError, match="periods_per_year"):
+        portfolio.report(periods_per_year=0)
 
 
 def test_report_degrades_when_the_metrics_overflow() -> None:
     """Absurd but finite returns overflow the log drift; the report still renders."""
-    prices = [1.0, 1_000.0, 1_000_000.0]
+    prices = [1.0, 300.0, 301.0]
     portfolio = Portfolio(
         assets={
             "AAA": make_series("AAA", prices),
@@ -534,5 +543,5 @@ def test_report_degrades_when_the_metrics_overflow() -> None:
         report = portfolio.report()
 
     assert report.startswith("# Informe de la cartera")
-    assert "No hay suficientes observaciones" in report
+    assert "Las métricas no se pueden representar" in report
     assert "muestra histórica es corta" in report
