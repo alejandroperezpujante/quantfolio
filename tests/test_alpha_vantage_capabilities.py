@@ -289,11 +289,11 @@ def test_cache_write_failure_warns_without_raising(
 ) -> None:
     """A failed atomic replacement warns in Spanish and leaves no partial cache."""
     monkeypatch.setattr(Path, "replace", raise_oserror)
+    capability_store = store(tmp_path)
+    capabilities = AlphaVantageCapabilities(AlphaVantagePlan.FREE, indexes_enabled=False)
 
     with pytest.warns(RuntimeWarning, match="caché"):
-        store(tmp_path).save(
-            "test-key", AlphaVantageCapabilities(AlphaVantagePlan.FREE, indexes_enabled=False)
-        )
+        capability_store.save("test-key", capabilities)
 
     assert not cache_path(tmp_path).exists()
     assert list(cache_path(tmp_path).parent.iterdir()) == []
@@ -305,9 +305,10 @@ def test_cache_invalidation_failure_warns_without_raising(
     """An invalidation failure warns in Spanish instead of raising."""
     write_cache(tmp_path)
     monkeypatch.setattr(Path, "unlink", raise_oserror)
+    capability_store = store(tmp_path)
 
     with pytest.warns(RuntimeWarning, match="caché"):
-        store(tmp_path).invalidate(API_KEY)
+        capability_store.invalidate(API_KEY)
 
     assert cache_path(tmp_path).exists()
 
@@ -334,7 +335,7 @@ def premium_denial() -> AlphaVantageError:
 
 def ordered_client(monkeypatch: pytest.MonkeyPatch, responses: list[object]) -> Mock:
     """Install an ordered fake client that exposes discovery requests."""
-    client = Mock()
+    client = Mock(spec=AlphaVantageClient)
     client.get.side_effect = responses
     monkeypatch.setattr(AlphaVantageClient, "get", client.get)
     return client

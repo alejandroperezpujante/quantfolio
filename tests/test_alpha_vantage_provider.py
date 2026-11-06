@@ -391,9 +391,10 @@ def test_empty_window_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_empty_ticker_fails_before_http(monkeypatch: pytest.MonkeyPatch) -> None:
     """Invalid tickers never reach the HTTP client."""
     stub = install_client(monkeypatch, [free_payload(pd.Timestamp("2025-01-02"), 2)])
+    source = make_source(AlphaVantagePlan.FREE)
 
     with pytest.raises(ValueError, match="vacío"):
-        make_source(AlphaVantagePlan.FREE).get_prices("   ", "2025-01-02")
+        source.get_prices("   ", "2025-01-02")
 
     assert stub.calls == []
 
@@ -448,26 +449,29 @@ def test_missing_daily_table_raises(
 ) -> None:
     """Responses without a usable daily table are rejected."""
     install_client(monkeypatch, [payload])
+    source = make_source(AlphaVantagePlan.FREE)
 
     with pytest.raises(ValueError, match="serie diaria"):
-        make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2025-01-02")
+        source.get_prices("IBM", "2025-01-02")
 
 
 def test_non_object_daily_row_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unexpected row shapes are rejected instead of silently ignored."""
     install_client(monkeypatch, [{"Time Series (Daily)": {"2025-01-02": ["not", "a", "row"]}}])
+    source = make_source(AlphaVantagePlan.FREE)
 
     with pytest.raises(TypeError, match="fila diaria"):
-        make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2025-01-02")
+        source.get_prices("IBM", "2025-01-02")
 
 
 @pytest.mark.parametrize("day", ["not-a-date", ""])
 def test_invalid_dates_raise(monkeypatch: pytest.MonkeyPatch, day: str) -> None:
     """Malformed observation dates are rejected."""
     install_client(monkeypatch, [{"Time Series (Daily)": {day: {"4. close": "100.0"}}}])
+    source = make_source(AlphaVantagePlan.FREE)
 
     with pytest.raises(ValueError, match="fechas no válidas"):
-        make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2025-01-02")
+        source.get_prices("IBM", "2025-01-02")
 
 
 def test_free_compact_rejects_clipped_start(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -851,9 +855,10 @@ def test_more_invalid_tickers_fail_before_http(
 ) -> None:
     """Separators, traversal, malformed codes and unapproved commodities are rejected."""
     stub = install_client(monkeypatch, [index_payload(pd.Timestamp("2025-01-02"), 2)])
+    source = premium_source()
 
     with pytest.raises(ValueError, match="Alpha Vantage"):
-        premium_source().get_prices(ticker, "2025-01-01")
+        source.get_prices(ticker, "2025-01-01")
 
     assert stub.calls == []
 
@@ -865,25 +870,28 @@ def test_missing_array_table_raises(
 ) -> None:
     """Responses without a usable array table are rejected."""
     install_client(monkeypatch, [payload])
+    source = premium_source()
 
     with pytest.raises(ValueError, match="serie diaria"):
-        premium_source().get_prices("INDEX:SPX", "2025-01-02")
+        source.get_prices("INDEX:SPX", "2025-01-02")
 
 
 def test_non_object_array_row_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unexpected array row shapes are rejected instead of silently ignored."""
     install_client(monkeypatch, [{"data": [["not", "a", "row"]]}])
+    source = premium_source()
 
     with pytest.raises(TypeError, match="fila diaria"):
-        premium_source().get_prices("INDEX:SPX", "2025-01-02")
+        source.get_prices("INDEX:SPX", "2025-01-02")
 
 
 def test_invalid_array_dates_raise(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing or non-text array dates are rejected."""
     install_client(monkeypatch, [{"data": [{"date": None, "close": "100.0"}]}])
+    source = premium_source()
 
     with pytest.raises(ValueError, match="fechas no válidas"):
-        premium_source().get_prices("INDEX:SPX", "2025-01-02")
+        source.get_prices("INDEX:SPX", "2025-01-02")
 
 
 def test_free_compact_cap_uses_raw_row_count(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -895,9 +903,10 @@ def test_free_compact_cap_uses_raw_row_count(monkeypatch: pytest.MonkeyPatch) ->
     }
     table[dates[50].strftime("%Y-%m-%d")] = {"4. close": "not-a-number"}
     install_client(monkeypatch, [{"Time Series (Daily)": table}])
+    source = make_source(AlphaVantagePlan.FREE)
 
     with pytest.raises(ValueError, match="100"):
-        make_source(AlphaVantagePlan.FREE).get_prices("IBM", "2020-01-01")
+        source.get_prices("IBM", "2020-01-01")
 
 
 def test_fx_series_round_trips_through_the_csv_cache(

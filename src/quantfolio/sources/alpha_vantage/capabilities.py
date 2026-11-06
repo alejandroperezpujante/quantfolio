@@ -191,10 +191,10 @@ def _is_fresh(value: object) -> bool:
         detected_at = datetime.fromisoformat(value)
     except ValueError:
         return False
-    if detected_at.tzinfo is None:
-        return False
-    age = datetime.now(UTC) - detected_at
-    return timedelta(0) <= age < CAPABILITY_TTL
+    return (
+        detected_at.tzinfo is not None
+        and timedelta(0) <= datetime.now(UTC) - detected_at < CAPABILITY_TTL
+    )
 
 
 def create_alpha_vantage_source(
@@ -227,10 +227,18 @@ def create_alpha_vantage_source(
         store.invalidate(api_key)
         raise
 
-    cached = store.load(api_key)
-    if cached is not None:
-        return _source(api_key, cached, cache_dir)
+    capabilities = store.load(api_key)
+    if capabilities is None:
+        capabilities = _discover_capabilities(client, store, api_key)
+    return _source(api_key, capabilities, cache_dir)
 
+
+def _discover_capabilities(
+    client: AlphaVantageClient,
+    store: AlphaVantageCapabilityStore,
+    api_key: str,
+) -> AlphaVantageCapabilities:
+    """Discover and persist the plan and index entitlement of a validated key."""
     try:
         adjusted = client.get(
             function="TIME_SERIES_DAILY_ADJUSTED",
@@ -243,21 +251,27 @@ def create_alpha_vantage_source(
             raise
         capabilities = AlphaVantageCapabilities(AlphaVantagePlan.FREE, indexes_enabled=False)
         store.save(api_key, capabilities)
-        return _source(api_key, capabilities, cache_dir)
+        return capabilities
 
     premium = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=True)
     try:
         index = client.get(function="INDEX_DATA", symbol="SPX", interval="daily")
         _require_array_field(index, "data", "close", "índices")
     except AlphaVantageError as error:
+        capabilities = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=False)
         if error.category is AlphaVantageErrorCategory.ENTITLEMENT:
-            no_indexes = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=False)
-            store.save(api_key, no_indexes)
-            return _source(api_key, no_indexes, cache_dir)
-        return _unavailable_indexes_source(api_key, cache_dir)
+            store.save(api_key, capabilities)
+        else:
+            warnings.warn(
+                "No se pudo validar el acceso a índices de Alpha Vantage; "
+                "los índices quedan deshabilitados.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return capabilities
 
     store.save(api_key, premium)
-    return _source(api_key, premium, cache_dir)
+    return premium
 
 
 def _source(
@@ -266,7 +280,7 @@ def _source(
     cache_dir: str | Path,
 ) -> AlphaVantageSource:
     """Create a source lazily to keep the provider/capability import graph acyclic."""
-    from quantfolio.sources.alpha_vantage.provider import AlphaVantageSource  # noqa: PLC0415
+    from quantfolio.sources.alpha_vantage.provider import AlphaVantageSource
 
     return AlphaVantageSource(
         api_key,
@@ -310,15 +324,3 @@ def _raise_invalid_probe(probe: str) -> None:
     """Raise a generic provider error for an unexpected validation response."""
     msg = f"Alpha Vantage devolvió una respuesta no válida durante la {probe}."
     raise AlphaVantageError(msg, AlphaVantageErrorCategory.GENERIC)
-
-
-def _unavailable_indexes_source(api_key: str, cache_dir: str | Path) -> AlphaVantageSource:
-    """Warn about an ambiguous index probe and return usable non-index capabilities."""
-    warnings.warn(
-        "No se pudo validar el acceso a índices de Alpha Vantage; "
-        "los índices quedan deshabilitados.",
-        RuntimeWarning,
-        stacklevel=2,
-    )
-    capabilities = AlphaVantageCapabilities(AlphaVantagePlan.PREMIUM, indexes_enabled=False)
-    return _source(api_key, capabilities, cache_dir)

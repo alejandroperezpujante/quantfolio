@@ -71,8 +71,9 @@ def get_error(payload: object) -> AlphaVantageError:
     """Return the error the client raises for one control payload."""
     with pytest.MonkeyPatch.context() as monkeypatch:
         _install_response(monkeypatch, payload)
+        client = AlphaVantageClient(API_KEY)
         with pytest.raises(AlphaVantageError) as captured:
-            AlphaVantageClient(API_KEY).get(function="TIME_SERIES_DAILY", symbol="IBM")
+            client.get(function="TIME_SERIES_DAILY", symbol="IBM")
     return captured.value
 
 
@@ -142,9 +143,10 @@ def test_get_wraps_network_errors(monkeypatch: pytest.MonkeyPatch) -> None:
         raise OSError(msg)
 
     monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = AlphaVantageClient(API_KEY)
 
     with pytest.raises(AlphaVantageError) as captured:
-        AlphaVantageClient(API_KEY).get(symbol="IBM")
+        client.get(symbol="IBM")
 
     error = captured.value
     assert error.category is AlphaVantageErrorCategory.GENERIC
@@ -166,9 +168,10 @@ def test_get_wraps_invalid_json(
         return _FakeResponse(body, raw=True)
 
     monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = AlphaVantageClient(API_KEY)
 
     with pytest.raises(AlphaVantageError) as captured:
-        AlphaVantageClient(API_KEY).get(symbol="IBM")
+        client.get(symbol="IBM")
 
     assert captured.value.category is AlphaVantageErrorCategory.GENERIC
     assert "JSON" in str(captured.value)
@@ -181,9 +184,10 @@ def test_get_rejects_non_object_json(
 ) -> None:
     """Only a top-level JSON object is accepted as a successful response."""
     _install_response(monkeypatch, payload)
+    client = AlphaVantageClient(API_KEY)
 
     with pytest.raises(AlphaVantageError) as captured:
-        AlphaVantageClient(API_KEY).get(symbol="IBM")
+        client.get(symbol="IBM")
 
     assert captured.value.category is AlphaVantageErrorCategory.GENERIC
 

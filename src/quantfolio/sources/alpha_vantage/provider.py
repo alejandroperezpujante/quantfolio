@@ -1,6 +1,7 @@
 """Historical daily price source backed by the Alpha Vantage REST API."""
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
@@ -21,7 +22,7 @@ from quantfolio.sources.alpha_vantage.client import (
 from quantfolio.sources.base import PriceSource, naive_timestamp, validate_ticker
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable
     from pathlib import Path
 
     from quantfolio.sources.base import DateLike
@@ -54,6 +55,15 @@ PREMIUM_EQUITY_PROVENANCE = "Alpha Vantage (premium, adjusted)"
 _DAILY_INTERVAL = "daily"
 _COMPACT_OUTPUT_SIZE = "compact"
 _FULL_OUTPUT_SIZE = "full"
+
+#: Decoded JSON object handled by the response parsers.
+_JsonObject = Mapping[str, object]
+
+
+def _as_json_object(value: object) -> _JsonObject:
+    """Return the JSON-object view of a value already validated as a mapping."""
+    return cast("Mapping[str, object]", value)
+
 
 #: Payload keys that hold the daily observations of each endpoint family.
 _EQUITY_TABLE = "Time Series (Daily)"
@@ -207,7 +217,7 @@ def _series(
 
 
 def _parse_table(
-    payload: Mapping[str, object],
+    payload: _JsonObject,
     table: str,
     field: str,
     symbol: str,
@@ -232,18 +242,18 @@ def _parse_table(
     if not isinstance(entries, dict) or not entries:
         msg = f"Alpha Vantage no devolvió una serie diaria para {symbol}."
         raise ValueError(msg)
-    rows = cast("Mapping[str, object]", entries)
+    rows = _as_json_object(entries)
     values: list[object] = []
     for row in rows.values():
         if not isinstance(row, dict):
             msg = f"Alpha Vantage devolvió una fila diaria no válida para {symbol}."
             raise TypeError(msg)
-        values.append(cast("Mapping[str, object]", row).get(field))
+        values.append(_as_json_object(row).get(field))
     return _History(prices=_series(rows, values, symbol), raw_rows=len(rows))
 
 
 def _parse_array(
-    payload: Mapping[str, object],
+    payload: _JsonObject,
     table: str,
     field: str,
     symbol: str,
@@ -274,7 +284,7 @@ def _parse_array(
         if not isinstance(row, dict):
             msg = f"Alpha Vantage devolvió una fila diaria no válida para {symbol}."
             raise TypeError(msg)
-        entry = cast("Mapping[str, object]", row)
+        entry = _as_json_object(row)
         days.append(entry.get("date"))
         values.append(entry.get(field))
     return _History(prices=_series(days, values, symbol), raw_rows=len(days))
@@ -387,16 +397,17 @@ class AlphaVantageSource(PriceSource):
             return self._equity_route(symbol)
         family = prefix.strip().upper()
         code = remainder.strip()
-        if family == "INDEX":
-            return self._index_route(code, symbol)
-        if family == "FX":
-            return self._fx_route(code, symbol)
-        if family == "CRYPTO":
-            return self._crypto_route(code, symbol)
-        if family == "COMMODITY":
-            return self._commodity_route(code, symbol)
-        msg = f"Alpha Vantage no admite el ticker {symbol}: prefijo desconocido."
-        raise ValueError(msg)
+        handlers = {
+            "INDEX": self._index_route,
+            "FX": self._fx_route,
+            "CRYPTO": self._crypto_route,
+            "COMMODITY": self._commodity_route,
+        }
+        handler = handlers.get(family)
+        if handler is None:
+            msg = f"Alpha Vantage no admite el ticker {symbol}: prefijo desconocido."
+            raise ValueError(msg)
+        return handler(code, symbol)
 
     def _equity_route(self, symbol: str) -> _Route:
         """Return the plan-specific daily equity endpoint."""

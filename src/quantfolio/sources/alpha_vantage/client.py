@@ -97,10 +97,15 @@ def _control_error(payload: Mapping[str, object]) -> AlphaVantageError | None:
         return None
     text = " ".join(value.strip().lower() for value in values if isinstance(value, str))
     if any(phrase in text for phrase in _QUOTA_PHRASES):
-        return AlphaVantageError(_QUOTA_MESSAGE, AlphaVantageErrorCategory.QUOTA)
-    if any(phrase in text for phrase in _ENTITLEMENT_PHRASES):
-        return AlphaVantageError(_ENTITLEMENT_MESSAGE, AlphaVantageErrorCategory.ENTITLEMENT)
-    return AlphaVantageError(_GENERIC_MESSAGE)
+        category = AlphaVantageErrorCategory.QUOTA
+        message = _QUOTA_MESSAGE
+    elif any(phrase in text for phrase in _ENTITLEMENT_PHRASES):
+        category = AlphaVantageErrorCategory.ENTITLEMENT
+        message = _ENTITLEMENT_MESSAGE
+    else:
+        category = AlphaVantageErrorCategory.GENERIC
+        message = _GENERIC_MESSAGE
+    return AlphaVantageError(message, category)
 
 
 class AlphaVantageClient:
