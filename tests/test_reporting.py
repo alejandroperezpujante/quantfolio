@@ -130,3 +130,16 @@ def test_portfolio_and_series_plot_delegates(
     portfolio.assets["AAA"].plot_simulation(simulations, max_paths=2)
 
     assert len(plt.get_fignums()) == 3
+
+
+def test_series_simulation_uses_the_price_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single-asset simulation is labelled as a price, not a portfolio."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+    asset = make_series("AAA", [10.0, 11.0, 12.0, 13.0])
+    simulations = asset.simulate_monte_carlo(MonteCarloParameters(n_paths=2, horizon=5, seed=1))
+
+    asset.plot_simulation(simulations, max_paths=1)
+
+    assert plt.gcf().axes[0].get_ylabel() == "Precio"
