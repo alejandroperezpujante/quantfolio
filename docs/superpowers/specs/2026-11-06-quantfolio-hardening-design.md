@@ -23,8 +23,8 @@ green); the work is therefore additive and test-first, one commit per problem.
 4. Add risk warnings for high volatility, deep drawdown and concentration (not only the
    single-asset case).
 5. Make `.report()` degrade gracefully when there are too few observations to compute metrics.
-6. Make mixed-calendar return gaps visible: count returns that span more than one calendar day and
-   document the annualization approximation.
+6. Make mixed-calendar return gaps visible: count return intervals that span more than one calendar
+   day and document the annualization approximation.
 7. Harden the CSV cache path for tickers containing `/`, `\` or `..`.
 8. Pin the notebook end date and re-run all notebooks so their outputs are deterministic.
 9. Fix the single-asset simulation label and the stale README claims.
@@ -55,6 +55,9 @@ and no return at or below −100 %:
 | `historical_var(returns, confidence=0.95)` | `-quantile(1 - confidence)` (positive number = loss) |
 | `historical_cvar(returns, confidence=0.95)` | `-mean(returns <= quantile(1 - confidence))` |
 
+`Portfolio.sharpe_ratio` takes the report's `periods_per_year` so the annualized return, volatility
+and Sharpe ratio use the same factor.
+
 `risk_free_rate` is an annual rate converted to a per-period rate by dividing by
 `periods_per_year`. Invalid confidence (`≤ 0` or `≥ 1`), fewer than two returns, non-finite returns
 and returns `≤ -1` raise `ValueError` with Spanish messages.
@@ -64,20 +67,28 @@ and returns `≤ -1` raise `ValueError` with Spanish messages.
 The existing section order stays unchanged, so the current section-number assertions keep passing:
 
 1. Composición
-2. Métricas históricas — existing four rows plus:
-   - Máxima caída histórica
-   - Ratio de Sharpe (rf = …)
-   - VaR histórico diario (95 %)
-   - CVaR histórico diario (95 %)
-   - Rentabilidad geométrica (CAGR)
-   - Deriva del logaritmo usada por Monte Carlo
-   - Crecimiento mediano implícito
-   - Error estándar de la rentabilidad anualizada
-   - IC 95 % de la rentabilidad anualizada
+2. Métricas históricas — the four existing rows plus the new ones, in the rendered order:
+   1. Rentabilidad media diaria
+   2. Volatilidad diaria
+   3. Rentabilidad anualizada aproximada
+   4. Volatilidad anualizada
+   5. Error estándar de la rentabilidad anualizada
+   6. IC 95% de la rentabilidad anualizada
+   7. Rentabilidad geométrica (CAGR)
+   8. Deriva del logaritmo usada por Monte Carlo
+   9. Crecimiento mediano implícito (exp(m)-1)
+   10. Máxima caída histórica
+   11. Ratio de Sharpe (rf = …)
+   12. VaR histórico diario (95%)
+   13. CVaR histórico diario (95%)
 3. Calidad de los datos — existing counts plus sample period, years of history, per-asset coverage
-   table, and the share of returns spanning more than one calendar day.
+   table, and the share of return intervals spanning more than one calendar day.
 4. Advertencias de riesgo — existing warnings plus high volatility, deep drawdown, concentration
-   and mixed-calendar warnings.
+   and multi-day-interval warnings.
+
+After the metrics table the report renders
+`_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._`, because a negative VaR
+or CVaR means the tail quantile is a gain.
 
 `Portfolio.report()` and `render_portfolio_report()` gain keyword-only `risk_free_rate: float = 0.0`
 and `confidence: float = 0.95`. Existing calls remain valid.
@@ -88,8 +99,8 @@ and `confidence: float = 0.95`. Existing calls remain valid.
 |---|---:|---|
 | `HIGH_VOLATILITY_WARNING_THRESHOLD` | 0.25 | annualized volatility ≥ 25 % |
 | `DRAWDOWN_WARNING_THRESHOLD` | -0.20 | maximum drawdown ≤ −20 % |
-| `CONCENTRATION_WARNING_THRESHOLD` | 0.50 | largest weight ≥ 50 % |
-| mixed-calendar warning | 0.05 | > 5 % of returns span more than one calendar day |
+| `CONCENTRATION_WARNING_THRESHOLD` | 0.50 | largest weight > 50 % |
+| multi-day-interval warning | 0.05 | > 5 % of return intervals span more than one calendar day |
 
 `SHORT_HISTORY_WARNING_THRESHOLD = 30` is retained as the "can compute" guard. The new
 annualized-return standard error is the informative signal; a 1.8-year sample will show a wide
@@ -98,22 +109,29 @@ interval without changing the existing warning.
 ### Mixed calendars
 
 `Portfolio.return_gaps()` returns the calendar-day differences between consecutive return dates.
-`alignment_summary()` adds `multi_day_returns`, `multi_day_share` and `max_gap_days`. The report
-warns when more than 5 % of returns span more than one calendar day. The full return engine is out
-of scope; the README explains the approximation.
+`alignment_summary()` adds `multi_day_returns`, `multi_day_share` and `max_gap_days`. For disjoint
+calendars it returns zero coverage and zero gap statistics instead of raising. The report warns when
+more than 5 % of return intervals span more than one calendar day; the warning describes that
+measured share (weekends included) without claiming that the portfolio mixes calendars. The full
+return engine is out of scope; the README explains the approximation.
 
 ### Cache
 
 `CachedPriceSource` keeps safe tickers unchanged (`AAA.csv`) and replaces `/`, `\` and `..` with
 `-` (`BTC/USD` → `BTC-USD.csv`; `../escape` → `escape.csv`). An empty stem raises `ValueError`.
-The cache file always stays inside the provider directory.
+The cache file always stays inside the provider directory. The CSV stores the requested ticker in a
+`ticker` column, so a file whose column does not match the requested ticker is a cache miss. Legacy
+files without the column are trusted only when the ticker needed no sanitization
+(`_cache_stem(ticker) == ticker`).
 
 ### Notebooks
 
 Every notebook defines `END = "2026-11-06"` (exclusive for price sources) and passes `end=END` to
-every price and macro call. The stored outputs are the ones produced by a single top-to-bottom run
-after the change. A new offline test parses the notebook JSON and asserts the pinned constant, the
-absence of `pd.Timestamp.now()` and the absence of error outputs.
+every price and macro call. Every notebook keeps stored outputs from a single top-to-bottom run after
+the change. A new offline test parses the notebook JSON and asserts the pinned constant, that every
+provider call passes `end=END`, the absence of `pd.Timestamp.now()`, `datetime.now(` and
+`date.today(` in code cells, at least one code cell with stored outputs per notebook, and the absence
+of error outputs.
 
 ## Constraints
 

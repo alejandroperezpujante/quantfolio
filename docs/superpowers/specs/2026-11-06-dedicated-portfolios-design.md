@@ -176,8 +176,8 @@ weekday series, even though the crypto sleeve internally spans weekends.
 
 The fixed-income notebook may add a single `FredMacroSource().get_series("DGS10", start=START)` cell as
 macro context (yield vs bond price), provided it stays a context cell and does not enter the portfolio.
-The crypto notebook uses the raw `KrakenSource` rather than the CSV cache, because `CachedPriceSource`
-turns the `/` in `BTC/USD` into a nested cache path; the retention note replaces the cache demo.
+The crypto notebook uses the raw `KrakenSource` rather than the CSV cache, so its retention note replaces
+the cache demo; the cache would otherwise sanitize `BTC/USD` to a `BTC-USD.csv` file.
 
 ### Main notebook changes
 

@@ -70,7 +70,7 @@ file.
 ## Review Focus
 
 - **A two-price portfolio must not crash `.report()`.** `summary()` needs two returns; the report must render an "insufficient observations" message instead of raising.
-- **A mixed-calendar portfolio must not hide its approximation.** The report must show how many returns span more than one calendar day and warn when the share exceeds 5 %.
+- **A mixed-calendar portfolio must not hide its approximation.** The report must show how many return intervals span more than one calendar day and warn when the share exceeds 5 %.
 - **A 99 %/1 % portfolio must warn about concentration.** The current check only fires for a single asset.
 - **A high-volatility or deep-drawdown portfolio must warn.** A 65 %-vol crypto portfolio currently gets only the generic warnings.
 - **A ticker containing `/` or `..` must not escape the cache directory.** `BTC/USD` must become a safe filename and `../escape` must stay inside the provider folder.
@@ -279,7 +279,7 @@ Definitions to implement (docstrings in English):
 - `sharpe_ratio`: validate `periods_per_year >= 1`; `period_rf = risk_free_rate / periods_per_year`; `annual_excess = (returns - period_rf).mean() * periods_per_year`; `annual_vol = returns.std(ddof=1) * sqrt(periods_per_year)`; return `0.0` when `annual_vol == 0`, else `annual_excess / annual_vol`.
 - `drift_standard_error`: validate `periods_per_year >= 1`; `years = len(returns) / periods_per_year`; `annual_vol / sqrt(years)`.
 - `historical_var`: validate confidence; `-float(returns.quantile(1.0 - confidence))`.
-- `historical_cvar`: validate confidence; `threshold = returns.quantile(1.0 - confidence)`; `tail = returns[returns <= threshold]`; raise `ValueError("No hay observaciones en la cola para calcular el CVaR.")` if empty; return `-float(tail.mean())`.
+- `historical_cvar`: validate confidence; `threshold = returns.quantile(1.0 - confidence)`; `tail = returns[returns <= threshold]`; return `-float(tail.mean())`.
 
 - [ ] **Step 4: Run the risk tests**
 
@@ -322,7 +322,7 @@ Expected: the PR's `Quality gates` and `Strict analysis` checks run on the branc
 - Consumes: the seven functions from Task 1.
 - Produces:
   - `Portfolio.max_drawdown() -> float`
-  - `Portfolio.sharpe_ratio(*, risk_free_rate: float = 0.0) -> float`
+  - `Portfolio.sharpe_ratio(*, risk_free_rate: float = 0.0, periods_per_year: int = 252) -> float`
   - `Portfolio.value_at_risk(*, confidence: float = 0.95) -> float`
   - `Portfolio.conditional_value_at_risk(*, confidence: float = 0.95) -> float`
   - `Portfolio.report(*, periods_per_year=252, include_quality=True, include_warnings=True, risk_free_rate=0.0, confidence=0.95) -> str`
@@ -392,11 +392,17 @@ Add four methods next to `summary()`:
         """Return the maximum peak-to-trough decline of the portfolio."""
         return max_drawdown_of_returns(self.portfolio_returns())
 
-    def sharpe_ratio(self, *, risk_free_rate: float = 0.0) -> float:
+    def sharpe_ratio(
+        self,
+        *,
+        risk_free_rate: float = 0.0,
+        periods_per_year: int = TRADING_DAYS_PER_YEAR,
+    ) -> float:
         """Return the annualized Sharpe ratio with an annual risk-free rate."""
         return sharpe_ratio_of_returns(
             self.portfolio_returns(),
             risk_free_rate=risk_free_rate,
+            periods_per_year=periods_per_year,
         )
 
     def value_at_risk(self, *, confidence: float = 0.95) -> float:
@@ -415,12 +421,21 @@ In `src/quantfolio/reporting.py`, add `risk_free_rate` and `confidence` keyword 
 ```python
             f"| Máxima caída histórica | {portfolio.max_drawdown():.2%} |",
             f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | "
-            f"{portfolio.sharpe_ratio(risk_free_rate=risk_free_rate):.2f} |",
+            f"{portfolio.sharpe_ratio(risk_free_rate=risk_free_rate, periods_per_year=periods_per_year):.2f} |",
             f"| VaR histórico diario ({confidence:.0%}) | "
             f"{portfolio.value_at_risk(confidence=confidence):.2%} |",
             f"| CVaR histórico diario ({confidence:.0%}) | "
             f"{portfolio.conditional_value_at_risk(confidence=confidence):.2%} |",
 ```
+
+`render_portfolio_report` reaches six parameters, so `PLR0913` is silenced by the
+`"src/quantfolio/reporting.py" = ["PLR0913"]` entry in `[tool.ruff.lint.per-file-ignores]` of
+`pyproject.toml` (commented "The report renderer mirrors the public `Portfolio.report` signature."),
+not by an inline `# noqa`.
+
+After the table, render the sign note
+`_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._`, so a negative VaR or
+CVaR is not read as a loss.
 
 Update the `Portfolio.report` docstring and pass the two keywords through.
 
@@ -456,7 +471,7 @@ Expected: the PR's `Quality gates` and `Strict analysis` checks run on the branc
 
 **Interfaces:**
 - Consumes: `risk.drift_standard_error`, `Portfolio.summary()`, `Portfolio.get_returns()`, `Portfolio.assets`.
-- Produces: two new metric rows (`Error estándar de la rentabilidad anualizada`, `IC 95 % de la rentabilidad anualizada`) and a quality-section block with the sample period and a per-asset table.
+- Produces: two new metric rows (`Error estándar de la rentabilidad anualizada`, `IC 95% de la rentabilidad anualizada`) and a quality-section block with the sample period and a per-asset table.
 
 **Branch:** `feat/report-sample-diagnostics` (cut from `main` after Task 2 merges).
 
@@ -527,7 +542,7 @@ In the metrics section, after the annualized volatility row, add:
         lines.extend(
             [
                 f"| Error estándar de la rentabilidad anualizada | {standard_error:.2%} |",
-                f"| IC 95% de la rentabilidad anualizada | {lower:.2%} – {upper:.2%} |",
+                f"| IC 95% de la rentabilidad anualizada | {lower:.2%} - {upper:.2%} |",
             ]
         )
 ```
@@ -749,6 +764,9 @@ Add to the metrics table:
             f"| Crecimiento mediano implícito (exp(m)-1) | {median_growth:.2%} |",
 ```
 
+The three rows are inserted after the `IC 95% de la rentabilidad anualizada` row and before the
+`Máxima caída histórica` row, which is the order the report renders.
+
 Add a note after the table:
 
 ```python
@@ -826,32 +844,59 @@ Expected: FAIL with `ValueError: Se necesitan al menos dos observaciones de rent
 
 - [ ] **Step 3: Guard the metrics section**
 
-In `render_portfolio_report`, replace the unconditional `metrics = portfolio.summary(...)` with:
+In `render_portfolio_report`, validate the arguments upfront, so an invalid call raises before
+anything is rendered:
 
 ```python
+    if periods_per_year < 1:
+        msg = "periods_per_year debe ser al menos uno."
+        raise ValueError(msg)
+    if not 0.0 < confidence < 1.0:
+        msg = "confidence debe estar entre 0 y 1."
+        raise ValueError(msg)
+```
+
+Then wrap the three calls that need at least two returns — `portfolio.summary(...)`,
+`portfolio.max_drawdown()` and `_render_metrics_section(...)` — in a single `try`:
+
+```python
+    returns = portfolio.portfolio_returns()
+    quality = portfolio.alignment_summary()
+    metrics: dict[str, float] | None = None
+    max_drawdown: float | None = None
+    metrics_note = "No hay suficientes observaciones para calcular métricas históricas."
+    metrics_lines: list[str] | None = None
     try:
         metrics = portfolio.summary(periods_per_year=periods_per_year)
+        max_drawdown = portfolio.max_drawdown()
+        metrics_lines = _render_metrics_section(
+            portfolio,
+            metrics=metrics,
+            returns=returns,
+            periods_per_year=periods_per_year,
+            risk_free_rate=risk_free_rate,
+            confidence=confidence,
+        )
     except ValueError:
         metrics = None
+        max_drawdown = None
+    except OverflowError:
+        metrics = None
+        max_drawdown = None
+        metrics_note = "Las métricas no se pueden representar: rentabilidad extrema."
+    if metrics_lines is None:
+        metrics_lines = ["", "## 2. Métricas históricas", "", metrics_note]
 ```
 
-Render the metrics section conditionally:
+`ValueError` covers the short sample (`summary()` needs two returns) and `OverflowError` covers an
+extreme return whose CAGR or log drift cannot be represented; both handlers leave the report without
+metrics, and the overflow case replaces the default note with the reason. Render `metrics_lines`
+where the table used to be, so the `## 3. Calidad de los datos` and `## 4. Advertencias de riesgo`
+numbering does not move.
 
-```python
-    if metrics is None:
-        lines.extend(
-            [
-                "",
-                "## 2. Métricas históricas",
-                "",
-                "No hay suficientes observaciones para calcular métricas históricas.",
-            ]
-        )
-    else:
-        # existing table plus the Task 2-5 rows
-```
-
-The risk-metric calls in Task 2 also depend on `metrics`; skip them when `metrics is None`. The warnings function must accept `metrics: dict[str, float] | None` and skip the volatility/drawdown branches when it is `None`; the short-history warning still fires.
+`_collect_risk_warnings` must accept `metrics: dict[str, float] | None` and
+`max_drawdown: float | None`; skip the volatility branch when `metrics is None` and the drawdown
+branch when `max_drawdown is None`. The short-history warning still fires.
 
 - [ ] **Step 4: Run the tests**
 
@@ -933,8 +978,8 @@ def test_alignment_summary_reports_multi_day_returns() -> None:
     assert summary["max_gap_days"] == 3
 
 
-def test_report_warns_about_mixed_calendar_returns() -> None:
-    """A mixed-calendar portfolio gets an explicit approximation warning."""
+def test_report_warns_about_multi_day_return_intervals() -> None:
+    """A portfolio with multi-day return intervals gets an approximation warning."""
     dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"])
     prices = pd.Series([10.0, 11.0, 12.0, 13.0], index=dates)
     portfolio = Portfolio(
@@ -945,55 +990,63 @@ def test_report_warns_about_mixed_calendar_returns() -> None:
         weights={"AAA": 0.5, "BBB": 0.5},
     )
 
-    assert "más de un día natural" in portfolio.report()
+    assert "la anualización con 252 o 365 periodos es aproximada" in portfolio.report()
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `uv run pytest tests/test_portfolio.py::test_return_gaps_reports_calendar_days tests/test_portfolio.py::test_alignment_summary_reports_multi_day_returns tests/test_portfolio.py::test_report_warns_about_mixed_calendar_returns -v`
+Run: `uv run pytest tests/test_portfolio.py::test_return_gaps_reports_calendar_days tests/test_portfolio.py::test_alignment_summary_reports_multi_day_returns tests/test_portfolio.py::test_report_warns_about_multi_day_return_intervals -v`
 
 Expected: FAIL because `return_gaps` and the summary keys do not exist.
 
 - [ ] **Step 3: Implement `return_gaps` and extend `alignment_summary`**
+
+In `src/quantfolio/portfolio.py`, add the shared helper next to the dataclass:
+
+```python
+def _calendar_gaps(dates: pd.DatetimeIndex) -> pd.Series[int]:
+    """Return the calendar-day gaps between consecutive dates."""
+    return dates.to_series().diff().dt.days.dropna().astype(int)
+```
 
 In `Portfolio`:
 
 ```python
     def return_gaps(self) -> pd.Series[int]:
         """Return the calendar-day gaps between consecutive return dates."""
-        returns = self.get_returns()
-        gaps = returns.index.to_series().diff().dt.days.dropna().astype(int)
-        return gaps
+        return _calendar_gaps(pd.DatetimeIndex(self.get_returns().index))
 ```
 
 In `alignment_summary`, add:
 
 ```python
-        gaps = self.return_gaps()
+        # The first shared date is the base of the first return, so the return intervals start
+        # on the second one; this mirrors ``return_gaps()`` without requiring two returns.
+        gaps = _calendar_gaps(pd.DatetimeIndex(common.index[1:]))
         multi_day_returns = int((gaps > 1).sum())
         multi_day_share = float(multi_day_returns / len(gaps)) if len(gaps) else 0.0
         max_gap_days = int(gaps.max()) if len(gaps) else 0
 ```
 
-and include the three keys in the returned dict.
+and include the three keys in the returned dict. Disjoint calendars therefore report a zero
+coverage and zero gap statistics instead of raising.
 
 - [ ] **Step 4: Add the report line and warning**
 
 In the quality section:
 
 ```python
-            f"- Retornos que abarcan más de un día natural: "
+            f"- Intervalos entre retornos que abarcan más de un día natural: "
             f"{quality['multi_day_share']:.1%} (máximo {quality['max_gap_days']} días)",
 ```
 
 In `_collect_risk_warnings`, after the coverage warning:
 
 ```python
-    if float(quality["multi_day_share"]) > 0.05:
+    if multi_day_share > MULTI_DAY_RETURNS_WARNING_THRESHOLD:
         risk_warnings.append(
-            "La cartera mezcla calendarios: el "
-            f"{float(quality['multi_day_share']):.1%} de los retornos abarca más de un "
-            "día natural; la anualización con 252 o 365 periodos es aproximada."
+            f"El {multi_day_share:.1%} de los intervalos entre retornos abarca "
+            "más de un día natural; la anualización con 252 o 365 periodos es aproximada."
         )
 ```
 
@@ -1003,8 +1056,11 @@ Add a bullet to the README "Limitaciones y advertencias" section:
 
 ```markdown
 - Las carteras que mezclan calendarios (por ejemplo, cripto y acciones) calculan los retornos
-  sobre la intersección de fechas; algunos retornos abarcan varios días naturales y la
-  anualización con 252 o 365 periodos es aproximada. El informe muestra el porcentaje afectado.
+  sobre la intersección de fechas; algunos intervalos entre retornos abarcan varios días naturales
+  y la anualización con 252 o 365 periodos es aproximada. El informe muestra el porcentaje afectado.
+  Una cartera de un solo calendario también puede superar el 5 % porque los fines de semana cuentan
+  como días naturales, así que la advertencia describe ese porcentaje medido y no afirma que la
+  cartera mezcle calendarios.
 ```
 
 - [ ] **Step 6: Run the tests**
@@ -1094,6 +1150,10 @@ Use it in `get_prices`:
 ```
 
 Safe tickers keep their name (`AAA.csv`), so the existing cache tests continue to pass.
+
+The cache also writes the requested ticker in a `ticker` column, so a file whose column does not
+match the requested ticker is a cache miss. Legacy files without the column are trusted only when
+`_cache_stem(ticker) == ticker`, i.e. when the ticker needed no sanitization.
 
 - [ ] **Step 4: Run the source tests**
 
@@ -1234,6 +1294,8 @@ from pathlib import Path
 
 import pytest
 
+ROOT = Path(__file__).resolve().parents[1]
+
 NOTEBOOKS = [
     "notebooks/quantfolio_demo.ipynb",
     "notebooks/portfolio_stocks.ipynb",
@@ -1245,18 +1307,29 @@ NOTEBOOKS = [
 
 @pytest.mark.parametrize("path", NOTEBOOKS)
 def test_notebooks_pin_the_end_date_and_have_no_errors(path: str) -> None:
-    """Every notebook is deterministic and free of stored tracebacks."""
-    notebook = json.loads(Path(path).read_text(encoding="utf-8"))
+    """Every notebook is deterministic, executed and free of stored tracebacks."""
+    notebook = json.loads((ROOT / path).read_text(encoding="utf-8"))
     code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
     sources = "\n".join("".join(cell["source"]) for cell in code_cells)
 
     assert 'END = "2026-11-06"' in sources
     assert "pd.Timestamp.now()" not in sources
+    assert "datetime.now(" not in sources
+    assert "date.today(" not in sources
     assert not any(
         output.get("output_type") == "error"
         for cell in code_cells
         for output in cell.get("outputs", [])
     ), path
+
+    call_lines = [
+        line
+        for line in sources.splitlines()
+        if any(token in line for token in (".get_prices(", ".get_many(", ".get_series("))
+    ]
+    assert call_lines, path
+    assert all("end=END" in line for line in call_lines), path
+    assert any(cell.get("outputs") for cell in code_cells), path
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1379,18 +1452,28 @@ Expected: the PR's `Quality gates` and `Strict analysis` checks run on the branc
 
 **Files:**
 - Modify: `README.md`
+- Modify: `notebooks/quantfolio_demo.ipynb` (markdown cell only)
+- Modify: `docs/superpowers/specs/2026-11-06-quantfolio-hardening-design.md`
+- Modify: `docs/superpowers/specs/2026-11-06-dedicated-portfolios-design.md`
+- Modify: `docs/superpowers/plans/2026-11-06-quantfolio-hardening.md`
 
 **Interfaces:**
 - Consumes: Tasks 2–11.
-- Produces: user-facing documentation that matches the code.
+- Produces: user-facing documentation that matches the code, plus a spec and plan that record what
+  actually shipped.
 
 **Branch:** `docs/report-and-notebooks` (cut from `main` after Tasks 2-11 merge).
 
 - [ ] **Step 1: Fix the stale claims**
 
-- `README.md:29`: change "actual: 99 %" to "actual: 100 %".
-- `README.md:41`: replace `git clone <URL-del-repositorio>` with
-  `git clone https://github.com/alejandroperezpujante/quantfolio.git`.
+- `README.md:29`: update the branch-coverage figure in the quality bullet to 100 %.
+- `README.md:41`: replace the clone placeholder with
+  `git clone https://github.com/alejandroperezpujante/quantfolio.git` and the following `cd` with
+  `cd quantfolio`, so the directory matches the cloned repository name.
+- `README.md:175`: replace the unsanitized cache path with the sanitized layout
+  (`data/<proveedor>/<ticker-saneado>.csv`, e.g. `BTC/USD` → `BTC-USD.csv`) and note that the
+  original ticker lives in a `ticker` column so two tickers that sanitize to the same stem never
+  share prices.
 - `README.md:383`: change "correlaciones" to "correlaciones (calculadas en `plots_report`)" or remove
   the word if the sentence still reads correctly.
 
@@ -1399,12 +1482,12 @@ Expected: the PR's `Quality gates` and `Strict analysis` checks run on the branc
 In the "Informes" section, add:
 
 ```markdown
-- `Portfolio.report()` incluye, además de la composición y las métricas básicas, la máxima caída
+- El informe incluye, además de la composición y las métricas básicas, la máxima caída
   histórica, el ratio de Sharpe, el VaR y el CVaR históricos al 95 %, la rentabilidad geométrica
   (CAGR), la deriva del logaritmo usada por Monte Carlo y el error estándar de la rentabilidad
   anualizada. `risk_free_rate` y `confidence` son parámetros del método.
 - La sección de calidad muestra el periodo de la muestra, los años de historia, la cobertura por
-  activo y el porcentaje de retornos que abarcan más de un día natural.
+  activo y el porcentaje de intervalos entre retornos que abarcan más de un día natural.
 ```
 
 - [ ] **Step 3: Document the notebook pinning**
@@ -1412,22 +1495,37 @@ In the "Informes" section, add:
 In the "Uso" section, add:
 
 ```markdown
-Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; la última
-sesión disponible depende del mercado (2026-11-05 en EE. UU., 2026-11-06 en Europa).
+Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; como `END` es
+exclusivo, la última sesión incluida es 2026-11-05 en todos los mercados.
 ```
 
-- [ ] **Step 4: Verify the claims**
+Update the demo notebook's cache markdown cell to the sanitized layout and the `ticker` column,
+without touching code cells, execution counts or stored outputs.
+
+- [ ] **Step 4: Reconcile the design record with the shipped code**
+
+- Hardening spec: "return intervals that span more than one calendar day", the `periods_per_year`
+  note for `Portfolio.sharpe_ratio`, `IC 95%`, `largest weight > 50 %`, the disjoint-calendar
+  behaviour of `alignment_summary()`, the `ticker` column in the cache section and the notebook test
+  scope.
+- Hardening plan: drop the unreachable CVaR guard, add `periods_per_year` to `Portfolio.sharpe_ratio`,
+  update Task 7 to the shipped `_calendar_gaps` helper and warning text, note the `ticker` column in
+  Task 8 and use the shipped Task 10 test.
+- Dedicated-portfolios spec: replace the "nested cache path" clause with the sanitized layout while
+  keeping the reason the crypto notebook uses the raw `KrakenSource`.
+
+- [ ] **Step 5: Verify the claims**
+
+Scan `README.md`, the two specs and the notebooks for the stale strings replaced in Step 1 and in the
+earlier tasks (the superseded coverage figure, the clone placeholder, the mixed-calendar warning
+wording, the unsanitized cache path, the spaced `IC 95` label, the `≥ 50 %` concentration threshold
+and the old quality label). The scan must return no matches; only the corrected correlation sentence
+in the README is allowed to contain "correlaciones".
+
+- [ ] **Step 6: Run the five global gates and commit**
 
 ```bash
-grep -n "actual: 99\|git clone <URL\|correlaciones" README.md
-```
-
-Expected: no output (or only the corrected correlation sentence).
-
-- [ ] **Step 5: Run the five global gates and commit**
-
-```bash
-git add README.md
+git add README.md notebooks/quantfolio_demo.ipynb docs/superpowers/specs/2026-11-06-quantfolio-hardening-design.md docs/superpowers/specs/2026-11-06-dedicated-portfolios-design.md docs/superpowers/plans/2026-11-06-quantfolio-hardening.md
 git commit -m "docs: document the hardened report and reproducible notebooks"
 ```
 
