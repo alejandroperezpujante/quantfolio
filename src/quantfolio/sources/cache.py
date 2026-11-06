@@ -103,24 +103,36 @@ class CachedPriceSource(PriceSource):
         end: DateLike | None,
     ) -> PriceSeries | None:
         """Return a cached series when it covers the requested window, else ``None``."""
-        try:
-            frame = pd.read_csv(path, index_col="Date", parse_dates=True, dtype={"Close": float})
-            if frame.empty:
-                return None
-            if "ticker" in frame.columns:
-                if frame["ticker"].iloc[0] != ticker:
-                    return None
-            elif _cache_stem(ticker) != ticker:
-                return None
-            raw = cast("pd.Series[float]", frame["Close"])
-            cached = PriceSeries(ticker=ticker, prices=raw, source=self.name)
-        except OSError, KeyError, TypeError, ValueError:
+        cached = self._read_cached_series(path, ticker)
+        if cached is None:
             return None
-
         window = self._covered_window(cached, start, end)
         if len(window) < MIN_OBSERVATIONS:
             return None
         return PriceSeries(ticker=ticker, prices=window, source=self.name)
+
+    def _read_cached_series(self, path: Path, ticker: str) -> PriceSeries | None:
+        """Return the cached series when the file belongs to the requested ticker."""
+        try:
+            frame = pd.read_csv(
+                path,
+                index_col="Date",
+                parse_dates=True,
+                dtype={"Close": float, "ticker": str},
+            )
+            if frame.empty or not self._matches_ticker(frame, ticker):
+                return None
+            raw = cast("pd.Series[float]", frame["Close"])
+            return PriceSeries(ticker=ticker, prices=raw, source=self.name)
+        except OSError, KeyError, TypeError, ValueError:
+            return None
+
+    @staticmethod
+    def _matches_ticker(frame: pd.DataFrame, ticker: str) -> bool:
+        """Return whether the cached file was written for the requested ticker."""
+        if "ticker" in frame.columns:
+            return bool(frame["ticker"].iloc[0] == ticker)
+        return _cache_stem(ticker) == ticker
 
     def _covered_window(
         self,

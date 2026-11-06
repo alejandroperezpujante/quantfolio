@@ -625,3 +625,14 @@ def test_cache_does_not_trust_legacy_files_for_sanitized_tickers(tmp_path: Path)
     assert upstream.calls == 1
     assert asset.source == "Stub"
     assert pd.read_csv(path)["ticker"].iloc[0] == "BTC/USD"
+
+
+def test_cache_reuses_files_for_numeric_looking_tickers(tmp_path: Path) -> None:
+    """A numeric-looking ticker keeps its text form and stays reusable."""
+    upstream = StubSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    cached.get_prices("123", "2025-01-02", "2025-02-27")
+    cached.get_prices("123", "2025-01-02", "2025-02-27")
+
+    assert upstream.calls == 1
