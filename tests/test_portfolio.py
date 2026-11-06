@@ -554,3 +554,52 @@ def test_report_degrades_when_the_metrics_overflow() -> None:
     assert "Las métricas no se pueden representar" in report
     assert "Volatilidad anualizada" not in report
     assert "muestra histórica es corta" in report
+
+
+def test_return_gaps_reports_calendar_days() -> None:
+    """A Friday-to-Monday return spans three calendar days."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"])
+    prices = pd.Series([10.0, 11.0, 12.0, 13.0], index=dates)
+    portfolio = Portfolio(
+        assets={
+            "AAA": PriceSeries(ticker="AAA", prices=prices),
+            "BBB": PriceSeries(ticker="BBB", prices=prices * 2.0),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert list(portfolio.return_gaps()) == [3, 1]
+
+
+def test_alignment_summary_reports_multi_day_returns() -> None:
+    """The summary counts returns that span more than one calendar day."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"])
+    prices = pd.Series([10.0, 11.0, 12.0, 13.0], index=dates)
+    portfolio = Portfolio(
+        assets={
+            "AAA": PriceSeries(ticker="AAA", prices=prices),
+            "BBB": PriceSeries(ticker="BBB", prices=prices * 2.0),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    summary = portfolio.alignment_summary()
+
+    assert summary["multi_day_returns"] == 1
+    assert summary["multi_day_share"] == pytest.approx(0.5)
+    assert summary["max_gap_days"] == 3
+
+
+def test_report_warns_about_mixed_calendar_returns() -> None:
+    """A mixed-calendar portfolio gets an explicit approximation warning."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"])
+    prices = pd.Series([10.0, 11.0, 12.0, 13.0], index=dates)
+    portfolio = Portfolio(
+        assets={
+            "AAA": PriceSeries(ticker="AAA", prices=prices),
+            "BBB": PriceSeries(ticker="BBB", prices=prices * 2.0),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    assert "más de un día natural" in portfolio.report()

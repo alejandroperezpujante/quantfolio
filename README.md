@@ -371,6 +371,9 @@ aprobatoria.
   supuestos utilizados.
 - La simulación modela el valor agregado de la cartera con un único GBM cuyos parámetros incorporan la covarianza
   histórica; no simula trayectorias individuales por activo.
+- Las carteras que mezclan calendarios (por ejemplo, cripto y acciones) calculan los retornos
+  sobre la intersección de fechas; algunos retornos abarcan varios días naturales y la
+  anualización con 252 o 365 periodos es aproximada. El informe muestra el porcentaje afectado.
 - Los proveedores externos pueden cambiar sus límites o interfaces (p. ej. Stooq pasó a exigir JavaScript durante
   el desarrollo del taller, por lo que se sustituyó por Kraken, que es una API pública sin clave).
 

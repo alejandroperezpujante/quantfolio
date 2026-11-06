@@ -108,22 +108,56 @@ class Portfolio:
             raise ValueError(msg)
         return prices.pct_change().dropna()
 
+    def return_gaps(self) -> pd.Series[int]:
+        """Return the calendar-day gaps between consecutive return dates.
+
+        A return computed from a Friday close to the following Monday close spans three
+        calendar days. When the assets mix calendars, some of these gaps are larger than one
+        day and the annualization with a fixed number of periods per year is approximate.
+        The first return has no predecessor, so it has no gap.
+
+        Returns:
+            Series of positive integers indexed by the later date of each pair, with one
+            entry per portfolio return after the first.
+
+        Raises:
+            ValueError: If the assets share fewer than two observation dates.
+
+        """
+        dates = self.get_returns().index.to_series()
+        gaps = dates.diff().dt.days.dropna().astype(int)
+        return cast("pd.Series[int]", gaps)
+
     def alignment_summary(self) -> dict[str, float | int]:
         """Summarize the temporal alignment of the portfolio assets.
 
+        The calendar-day gaps come from :meth:`return_gaps`; a sample with a single return
+        has no gap, so the multi-day statistics fall back to zero.
+
         Returns:
             Mapping with the number of dates in the union of calendars, the number of dates
-            shared by every asset and the resulting coverage ratio.
+            shared by every asset, the resulting coverage ratio, the number of returns that
+            span more than one calendar day, their share of the sample and the largest gap.
+
+        Raises:
+            ValueError: If the assets share fewer than two observation dates.
 
         """
         prices = self.get_prices()
         union_dates = len(prices)
         common_dates = len(prices.dropna(how="any"))
         coverage = common_dates / union_dates if union_dates else 0.0
+        gaps = self.return_gaps()
+        multi_day_returns = int((gaps > 1).sum())
+        multi_day_share = float(multi_day_returns / len(gaps)) if len(gaps) else 0.0
+        max_gap_days = int(gaps.max()) if len(gaps) else 0
         return {
             "union_dates": union_dates,
             "common_dates": common_dates,
             "coverage": coverage,
+            "multi_day_returns": multi_day_returns,
+            "multi_day_share": multi_day_share,
+            "max_gap_days": max_gap_days,
         }
 
     def portfolio_returns(self) -> pd.Series[float]:
