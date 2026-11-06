@@ -499,3 +499,40 @@ def test_report_includes_geometric_and_log_drift_measures() -> None:
     assert f"{cagr:.2%}" in report
     assert f"{log_drift:.2%}" in report
     assert f"{np.exp(log_drift) - 1:.2%}" in report
+
+
+def test_report_degrades_gracefully_with_one_return() -> None:
+    """A two-price portfolio gets a report, not an exception."""
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", [10.0, 11.0]),
+            "BBB": make_series("BBB", [20.0, 19.0]),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    report = portfolio.report()
+
+    assert report.startswith("# Informe de la cartera")
+    assert "## 1. Composición" in report
+    assert "No hay suficientes observaciones" in report
+    assert "## 3. Calidad de los datos" in report
+
+
+def test_report_degrades_when_the_metrics_overflow() -> None:
+    """Absurd but finite returns overflow the log drift; the report still renders."""
+    prices = [1.0, 1_000.0, 1_000_000.0]
+    portfolio = Portfolio(
+        assets={
+            "AAA": make_series("AAA", prices),
+            "BBB": make_series("BBB", prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    with np.errstate(over="ignore"):
+        report = portfolio.report()
+
+    assert report.startswith("# Informe de la cartera")
+    assert "No hay suficientes observaciones" in report
+    assert "muestra histórica es corta" in report

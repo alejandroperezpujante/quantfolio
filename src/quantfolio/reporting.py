@@ -34,6 +34,10 @@ def render_portfolio_report(
 ) -> str:
     """Render a portfolio report as structured Markdown.
 
+    The report degrades gracefully: when the aligned sample is too short to estimate the
+    metrics, or their computation overflows, the metrics section is replaced by an
+    explanatory note and the risk warnings skip the volatility and drawdown checks.
+
     Args:
         portfolio: Portfolio to report on.
         periods_per_year: Number of trading periods per year used to annualize the mean return,
@@ -48,10 +52,30 @@ def render_portfolio_report(
         Markdown text with composition, metrics, diagnostics and risk warnings.
 
     """
-    metrics = portfolio.summary(periods_per_year=periods_per_year)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
-    max_drawdown = portfolio.max_drawdown()
+    metrics: dict[str, float] | None = None
+    max_drawdown: float | None = None
+    metrics_lines = [
+        "",
+        "## 2. Métricas históricas",
+        "",
+        "No hay suficientes observaciones para calcular métricas históricas.",
+    ]
+    try:
+        metrics = portfolio.summary(periods_per_year=periods_per_year)
+        max_drawdown = portfolio.max_drawdown()
+        metrics_lines = _render_metrics_section(
+            portfolio,
+            metrics=metrics,
+            returns=returns,
+            periods_per_year=periods_per_year,
+            risk_free_rate=risk_free_rate,
+            confidence=confidence,
+        )
+    except ValueError, OverflowError:
+        metrics = None
+        max_drawdown = None
 
     lines = [
         "# Informe de la cartera",
@@ -62,16 +86,7 @@ def render_portfolio_report(
         "|---|---:|",
     ]
     lines.extend(f"| {ticker} | {weight:.2%} |" for ticker, weight in portfolio.weights.items())
-    lines.extend(
-        _render_metrics_section(
-            portfolio,
-            metrics=metrics,
-            returns=returns,
-            periods_per_year=periods_per_year,
-            risk_free_rate=risk_free_rate,
-            confidence=confidence,
-        )
-    )
+    lines.extend(metrics_lines)
 
     section = 3
     if include_quality:
@@ -194,10 +209,24 @@ def _collect_risk_warnings(
     portfolio: Portfolio,
     quality: dict[str, float | int],
     returns: pd.Series[float],
-    metrics: dict[str, float],
-    max_drawdown: float,
+    metrics: dict[str, float] | None,
+    max_drawdown: float | None,
 ) -> list[str]:
-    """Return the risk warnings derived from the current portfolio state."""
+    """Return the risk warnings derived from the current portfolio state.
+
+    Args:
+        portfolio: Portfolio being reported.
+        quality: Alignment summary returned by ``Portfolio.alignment_summary``.
+        returns: Portfolio returns used to detect a short sample.
+        metrics: Statistics returned by ``Portfolio.summary``, or ``None`` when they could not
+            be estimated; the volatility warning is skipped in that case.
+        max_drawdown: Maximum drawdown of the portfolio, or ``None`` when it could not be
+            estimated; the drawdown warning is skipped in that case.
+
+    Returns:
+        Warnings about alignment, concentration, risk and sample length.
+
+    """
     risk_warnings = [
         "Las rentabilidades históricas no garantizan resultados futuros.",
         "La simulación de Monte Carlo depende de los supuestos de rentabilidad y volatilidad.",
@@ -212,12 +241,15 @@ def _collect_risk_warnings(
         risk_warnings.append(
             "La cartera concentra toda la inversión en un único activo: no hay diversificación."
         )
-    if metrics["annualized_volatility"] >= HIGH_VOLATILITY_WARNING_THRESHOLD:
+    if (
+        metrics is not None
+        and metrics["annualized_volatility"] >= HIGH_VOLATILITY_WARNING_THRESHOLD
+    ):
         risk_warnings.append(
             f"La volatilidad anualizada es {metrics['annualized_volatility']:.1%}; "
             "la cartera se comporta como un activo de alto riesgo."
         )
-    if max_drawdown <= DRAWDOWN_WARNING_THRESHOLD:
+    if max_drawdown is not None and max_drawdown <= DRAWDOWN_WARNING_THRESHOLD:
         risk_warnings.append(
             f"La máxima caída histórica es {max_drawdown:.1%}; "
             "la simulación puede subestimar episodios de estrés."
