@@ -286,6 +286,10 @@ class Portfolio:
         Returns:
             Markdown text with composition, metrics, diagnostics and risk warnings.
 
+        Raises:
+            ValueError: If ``periods_per_year`` is not positive or ``confidence`` is not
+                strictly between zero and one.
+
         """
         return render_portfolio_report(
             self,
