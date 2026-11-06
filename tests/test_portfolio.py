@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import quantfolio
 from quantfolio.models import PriceSeries
 from quantfolio.portfolio import Portfolio
+from quantfolio.risk import historical_cvar, historical_var, max_drawdown, sharpe_ratio
 from quantfolio.simulation import MonteCarloParameters
 from tests.helpers import make_series
 
@@ -330,3 +332,49 @@ def test_report_does_not_warn_about_history_with_long_samples() -> None:
     report = portfolio.report()
 
     assert "muestra histórica es corta" not in report
+
+
+def test_portfolio_risk_metrics_match_manual() -> None:
+    """The portfolio methods delegate to the pure risk functions."""
+    portfolio = build_portfolio()
+    returns = portfolio.portfolio_returns()
+
+    assert portfolio.max_drawdown() == pytest.approx(max_drawdown(returns))
+    assert portfolio.sharpe_ratio() == pytest.approx(sharpe_ratio(returns))
+    assert portfolio.value_at_risk(confidence=0.95) == pytest.approx(
+        historical_var(returns, confidence=0.95)
+    )
+    assert portfolio.conditional_value_at_risk(confidence=0.95) == pytest.approx(
+        historical_cvar(returns, confidence=0.95)
+    )
+
+
+def test_report_includes_risk_metrics() -> None:
+    """The Markdown report shows drawdown, Sharpe, VaR and CVaR."""
+    report = build_portfolio().report()
+
+    assert "Máxima caída histórica" in report
+    assert "Ratio de Sharpe" in report
+    assert "VaR histórico diario (95%)" in report
+    assert "CVaR histórico diario (95%)" in report
+
+
+def test_report_forwards_the_risk_parameters() -> None:
+    """The risk-free rate and the confidence reach the report rows."""
+    report = build_portfolio().report(risk_free_rate=0.02, confidence=0.9)
+
+    assert "Ratio de Sharpe (rf=2.00%)" in report
+    assert "VaR histórico diario (90%)" in report
+    assert "CVaR histórico diario (90%)" in report
+
+
+def test_risk_measures_are_exported_from_the_package_root() -> None:
+    """The risk measures are importable from the package root."""
+    exported = (
+        quantfolio.compound_annual_growth,
+        quantfolio.drawdown_series,
+        quantfolio.historical_cvar,
+        quantfolio.sharpe_ratio,
+    )
+
+    assert all(callable(measure) for measure in exported)

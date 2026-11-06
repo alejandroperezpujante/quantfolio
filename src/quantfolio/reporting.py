@@ -17,12 +17,16 @@ if TYPE_CHECKING:
     from quantfolio.portfolio import Portfolio
 
 
-def render_portfolio_report(
+# The report exposes each documented option as a keyword argument, so its public signature is
+# intentionally wider than the default Pylint limit.
+def render_portfolio_report(  # noqa: PLR0913
     portfolio: Portfolio,
     *,
     periods_per_year: int = TRADING_DAYS_PER_YEAR,
     include_quality: bool = True,
     include_warnings: bool = True,
+    risk_free_rate: float = 0.0,
+    confidence: float = 0.95,
 ) -> str:
     """Render a portfolio report as structured Markdown.
 
@@ -31,6 +35,8 @@ def render_portfolio_report(
         periods_per_year: Number of trading periods per year used to annualize statistics.
         include_quality: Whether to include the data-quality diagnostics section.
         include_warnings: Whether to include the risk-warnings section.
+        risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
+        confidence: Confidence level of the value-at-risk measures.
 
     Returns:
         Markdown text with composition, metrics, diagnostics and risk warnings.
@@ -60,6 +66,19 @@ def render_portfolio_report(
             f"| Volatilidad diaria | {metrics['daily_volatility']:.4%} |",
             f"| Rentabilidad anualizada aproximada | {metrics['annualized_return_approx']:.2%} |",
             f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
+            f"| Máxima caída histórica | {portfolio.max_drawdown():.2%} |",
+            (
+                f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | "
+                f"{portfolio.sharpe_ratio(risk_free_rate=risk_free_rate):.2f} |"
+            ),
+            (
+                f"| VaR histórico diario ({confidence:.0%}) | "
+                f"{portfolio.value_at_risk(confidence=confidence):.2%} |"
+            ),
+            (
+                f"| CVaR histórico diario ({confidence:.0%}) | "
+                f"{portfolio.conditional_value_at_risk(confidence=confidence):.2%} |"
+            ),
         ]
     )
 
