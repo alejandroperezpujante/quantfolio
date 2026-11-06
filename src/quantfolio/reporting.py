@@ -23,14 +23,20 @@ def render_portfolio_report(
     periods_per_year: int = TRADING_DAYS_PER_YEAR,
     include_quality: bool = True,
     include_warnings: bool = True,
+    risk_free_rate: float = 0.0,
+    confidence: float = 0.95,
 ) -> str:
     """Render a portfolio report as structured Markdown.
 
     Args:
         portfolio: Portfolio to report on.
-        periods_per_year: Number of trading periods per year used to annualize statistics.
+        periods_per_year: Number of trading periods per year used to annualize the mean return,
+            the volatility and the Sharpe ratio; the VaR and the CVaR are expressed per return
+            period (daily in the examples).
         include_quality: Whether to include the data-quality diagnostics section.
         include_warnings: Whether to include the risk-warnings section.
+        risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
+        confidence: Confidence level of the value-at-risk measures.
 
     Returns:
         Markdown text with composition, metrics, diagnostics and risk warnings.
@@ -39,6 +45,13 @@ def render_portfolio_report(
     metrics = portfolio.summary(periods_per_year=periods_per_year)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
+    drawdown = portfolio.max_drawdown()
+    sharpe = portfolio.sharpe_ratio(
+        risk_free_rate=risk_free_rate,
+        periods_per_year=periods_per_year,
+    )
+    value_at_risk = portfolio.value_at_risk(confidence=confidence)
+    conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=confidence)
 
     lines = [
         "# Informe de la cartera",
@@ -60,6 +73,16 @@ def render_portfolio_report(
             f"| Volatilidad diaria | {metrics['daily_volatility']:.4%} |",
             f"| Rentabilidad anualizada aproximada | {metrics['annualized_return_approx']:.2%} |",
             f"| Volatilidad anualizada | {metrics['annualized_volatility']:.2%} |",
+            f"| Máxima caída histórica | {drawdown:.2%} |",
+            f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
+            f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
+            f"| CVaR histórico diario ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._",
         ]
     )
 

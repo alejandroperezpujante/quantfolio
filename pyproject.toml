@@ -79,6 +79,8 @@ known-first-party = ["quantfolio"]
 "src/quantfolio/sources/alpha_vantage/client.py" = ["S310"]
 # The provider imports capabilities; this lazy import keeps the graph acyclic.
 "src/quantfolio/sources/alpha_vantage/capabilities.py" = ["PLC0415"]
+# The report renderer mirrors the public Portfolio.report signature.
+"src/quantfolio/reporting.py" = ["PLR0913"]
 
 [tool.ruff.format]
 quote-style = "double"
