@@ -166,8 +166,10 @@ def test_annualized_log_assumptions_accepts_a_custom_annualization_factor() -> N
 
 def test_annualized_log_assumptions_rejects_non_positive_periods_per_year() -> None:
     """The annualization factor must be positive."""
+    returns = pd.Series([0.01, 0.02], dtype=float)
+
     with pytest.raises(ValueError, match="periods_per_year"):
-        annualized_log_assumptions(pd.Series([0.01, 0.02]), periods_per_year=0)
+        annualized_log_assumptions(returns, periods_per_year=0)
 
 
 def test_annualized_log_assumptions_requires_two_observations() -> None:
