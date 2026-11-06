@@ -924,7 +924,7 @@ def test_fx_series_round_trips_through_the_csv_cache(
     assert second.ticker == "FX:EUR/USD"
     assert second.source.endswith("(cache)")
     assert list(second.prices) == list(first.prices)
-    assert (tmp_path / "alpha-vantage" / "FX:EUR" / "USD.csv").is_file()
+    assert (tmp_path / "alpha-vantage" / "FX:EUR-USD.csv").is_file()
 
 
 def test_non_equity_window_is_inclusive_start_and_exclusive_end(
