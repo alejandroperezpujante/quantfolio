@@ -165,7 +165,7 @@ def _render_quality_section(
         f"- Fechas comunes a todos los activos: {quality['common_dates']}",
         f"- Cobertura tras la alineación: {quality['coverage']:.1%}",
         (
-            f"- Retornos que abarcan más de un día natural: "
+            f"- Intervalos entre retornos que abarcan más de un día natural: "
             f"{quality['multi_day_share']:.1%} (máximo {quality['max_gap_days']} días)"
         ),
         f"- Observaciones de rentabilidad: {len(returns)}",
@@ -286,9 +286,8 @@ def _collect_risk_warnings(
     multi_day_share = float(quality["multi_day_share"])
     if multi_day_share > MULTI_DAY_RETURNS_WARNING_THRESHOLD:
         risk_warnings.append(
-            "La cartera mezcla calendarios: el "
-            f"{multi_day_share:.1%} de los retornos abarca más de un "
-            "día natural; la anualización con 252 o 365 periodos es aproximada."
+            f"El {multi_day_share:.1%} de los intervalos entre retornos abarca "
+            "más de un día natural; la anualización con 252 o 365 periodos es aproximada."
         )
     if len(portfolio.assets) == 1:
         risk_warnings.append(

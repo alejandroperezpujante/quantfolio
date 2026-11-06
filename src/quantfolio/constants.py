@@ -9,8 +9,8 @@ TRADING_DAYS_PER_YEAR = 252
 #: Alignment coverage below which the portfolio report warns about discarded dates.
 ALIGNMENT_COVERAGE_WARNING_THRESHOLD = 0.9
 
-#: Share of returns spanning more than one calendar day above which the report warns that the
-#: annualization of a mixed-calendar portfolio is approximate.
+#: Share of return intervals spanning more than one calendar day above which the report warns
+#: that the annualization with a fixed number of periods per year is approximate.
 MULTI_DAY_RETURNS_WARNING_THRESHOLD = 0.05
 
 #: Number of portfolio returns below which the report warns about a short sample.

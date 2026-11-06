@@ -590,8 +590,8 @@ def test_alignment_summary_reports_multi_day_returns() -> None:
     assert summary["max_gap_days"] == 3
 
 
-def test_report_warns_about_mixed_calendar_returns() -> None:
-    """A mixed-calendar portfolio gets an explicit approximation warning."""
+def test_report_warns_about_multi_day_return_intervals() -> None:
+    """A portfolio with multi-day return intervals gets an approximation warning."""
     dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"])
     prices = pd.Series([10.0, 11.0, 12.0, 13.0], index=dates)
     portfolio = Portfolio(
@@ -602,4 +602,57 @@ def test_report_warns_about_mixed_calendar_returns() -> None:
         weights={"AAA": 0.5, "BBB": 0.5},
     )
 
-    assert "más de un día natural" in portfolio.report()
+    assert "la anualización con 252 o 365 periodos es aproximada" in portfolio.report()
+
+
+def test_report_stays_silent_at_the_multi_day_interval_threshold() -> None:
+    """A share of exactly five percent does not trigger the approximation warning."""
+    dates = pd.DatetimeIndex(
+        [
+            *pd.date_range("2025-01-01", periods=11),
+            *pd.date_range("2025-01-13", periods=11),
+        ]
+    )
+    prices = pd.Series([10.0 + 0.1 * position for position in range(len(dates))], index=dates)
+    portfolio = Portfolio(
+        assets={
+            "AAA": PriceSeries(ticker="AAA", prices=prices),
+            "BBB": PriceSeries(ticker="BBB", prices=prices),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    summary = portfolio.alignment_summary()
+
+    assert summary["multi_day_share"] == pytest.approx(0.05)
+    assert "la anualización con 252 o 365 periodos es aproximada" not in portfolio.report()
+
+
+def test_alignment_summary_handles_disjoint_calendars() -> None:
+    """Disjoint calendars report zero coverage instead of raising."""
+    portfolio = Portfolio(
+        assets={
+            "AAA": PriceSeries(
+                ticker="AAA",
+                prices=pd.Series(
+                    [10.0, 11.0],
+                    index=pd.DatetimeIndex(["2025-01-02", "2025-01-03"]),
+                ),
+            ),
+            "BBB": PriceSeries(
+                ticker="BBB",
+                prices=pd.Series(
+                    [20.0, 21.0],
+                    index=pd.DatetimeIndex(["2025-02-03", "2025-02-04"]),
+                ),
+            ),
+        },
+        weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+    summary = portfolio.alignment_summary()
+
+    assert summary["coverage"] == 0.0
+    assert summary["multi_day_returns"] == 0
+    assert summary["multi_day_share"] == 0.0
+    assert summary["max_gap_days"] == 0
