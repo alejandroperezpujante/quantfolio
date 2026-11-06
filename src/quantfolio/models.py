@@ -155,4 +155,4 @@ class PriceSeries:
             max_paths: Maximum number of trajectories to draw.
 
         """
-        plot_simulation_paths(simulations, max_paths=max_paths)
+        plot_simulation_paths(simulations, max_paths=max_paths, value_label="Precio")

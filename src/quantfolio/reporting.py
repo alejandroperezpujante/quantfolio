@@ -378,12 +378,18 @@ def plot_portfolio_report(portfolio: Portfolio) -> None:
     plt.show()
 
 
-def plot_simulation_paths(simulations: pd.DataFrame, *, max_paths: int = 100) -> None:
+def plot_simulation_paths(
+    simulations: pd.DataFrame,
+    *,
+    max_paths: int = 100,
+    value_label: str = "Valor de la cartera",
+) -> None:
     """Display simulated trajectories and the distribution of final values.
 
     Args:
         simulations: Path matrix returned by a ``simulate_monte_carlo`` method.
         max_paths: Maximum number of trajectories to draw.
+        value_label: Label of the trajectory axis, which names the simulated quantity.
 
     Raises:
         ValueError: If there are no simulations or ``max_paths`` is not positive.
@@ -402,7 +408,7 @@ def plot_simulation_paths(simulations: pd.DataFrame, *, max_paths: int = 100) ->
     simulations.iloc[:, :max_paths].plot(ax=trajectory_axis, legend=False, alpha=0.35)
     trajectory_axis.set_title("Trayectorias simuladas")
     trajectory_axis.set_xlabel("Sesiones")
-    trajectory_axis.set_ylabel("Valor de la cartera")
+    trajectory_axis.set_ylabel(value_label)
 
     distribution_axis = axes[1]
     final_values = simulations.iloc[-1]
