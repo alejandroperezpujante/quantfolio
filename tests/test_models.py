@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from quantfolio.models import PriceSeries, clean_numeric_series
+from quantfolio.risk import max_drawdown, sharpe_ratio
 from quantfolio.simulation import MonteCarloParameters
 from tests.helpers import TRADING_DATES, make_prices, make_series
 
@@ -160,3 +161,65 @@ def test_clean_numeric_series_keeps_negative_values_by_default() -> None:
     cleaned = clean_numeric_series(values)
 
     assert list(cleaned) == [-0.5, 0.25]
+
+
+def test_price_series_summary_matches_manual() -> None:
+    """A single asset exposes the same return statistics as a portfolio."""
+    asset = make_series("TEST", [100.0, 101.0, 102.01, 103.0301])
+    returns = asset.prices.pct_change().dropna()
+
+    summary = asset.summary()
+
+    assert summary["mean_daily_return"] == pytest.approx(float(returns.mean()))
+    assert summary["annualized_return_approx"] == pytest.approx(float(returns.mean()) * 252)
+    assert summary["max_drawdown"] == pytest.approx(max_drawdown(returns))
+
+
+def test_price_series_summary_reports_every_key() -> None:
+    """The summary carries the six return statistics, delegating risk to the risk module."""
+    asset = make_series("TEST", [100.0, 101.0, 102.01, 103.0301])
+    returns = asset.prices.pct_change().dropna()
+    std_daily = float(returns.std(ddof=1))
+
+    summary = asset.summary()
+
+    assert set(summary) == {
+        "mean_daily_return",
+        "daily_volatility",
+        "annualized_return_approx",
+        "annualized_volatility",
+        "max_drawdown",
+        "sharpe_ratio",
+    }
+    assert summary["daily_volatility"] == pytest.approx(std_daily)
+    assert summary["annualized_volatility"] == pytest.approx(std_daily * np.sqrt(252))
+    assert summary["sharpe_ratio"] == pytest.approx(sharpe_ratio(returns))
+
+
+def test_price_series_summary_uses_the_configured_periods_per_year() -> None:
+    """Annualization and Sharpe follow the requested calendar."""
+    asset = make_series("TEST", [100.0, 101.0, 102.01, 103.0301])
+    returns = asset.prices.pct_change().dropna()
+    std_daily = float(returns.std(ddof=1))
+
+    summary = asset.summary(periods_per_year=365)
+
+    assert summary["annualized_return_approx"] == pytest.approx(float(returns.mean()) * 365)
+    assert summary["annualized_volatility"] == pytest.approx(std_daily * np.sqrt(365))
+    assert summary["sharpe_ratio"] == pytest.approx(sharpe_ratio(returns, periods_per_year=365))
+
+
+def test_price_series_summary_requires_two_returns() -> None:
+    """A single price has no return to summarize."""
+    asset = make_series("TEST", [10.0])
+
+    with pytest.raises(ValueError, match="dos observaciones"):
+        asset.summary()
+
+
+def test_price_series_summary_rejects_non_positive_periods_per_year() -> None:
+    """The annualization factor must be positive."""
+    asset = make_series("TEST", [10.0, 11.0, 12.0])
+
+    with pytest.raises(ValueError, match="periods_per_year"):
+        asset.summary(periods_per_year=0)
