@@ -19,13 +19,14 @@ class MonteCarloParameters:
 
     Attributes:
         n_paths: Number of independent trajectories.
-        horizon: Number of trading sessions to simulate.
+        horizon: Number of periods to simulate.
         initial_value: Starting value; when ``None``, each caller applies its own default.
         return_assumption: Annualized drift of the log process; ``None`` estimates it from the
             historical returns.
         volatility_assumption: Annualized volatility of the log process; ``None`` estimates it
             from the historical returns.
         seed: Seed for the random generator; use it for reproducible results.
+        periods_per_year: Number of periods per year used to annualize and to set the time step.
 
     """
 
@@ -35,6 +36,7 @@ class MonteCarloParameters:
     return_assumption: float | None = None
     volatility_assumption: float | None = None
     seed: int | None = None
+    periods_per_year: int = TRADING_DAYS_PER_YEAR
 
 
 def simulate_gbm_paths(
@@ -46,7 +48,8 @@ def simulate_gbm_paths(
 ) -> npt.NDArray[np.float64]:
     r"""Simulate geometric Brownian motion paths.
 
-    The process is discretized in trading sessions with annualized assumptions:
+    The process is discretized in periods of ``1 / periods_per_year`` years with annualized
+    assumptions:
 
     $$S_t = S_0 \exp\left(\mu t + \sigma W_t\right)$$
 
@@ -82,8 +85,11 @@ def simulate_gbm_paths(
     if parameters.n_paths < 1:
         msg = "El número de trayectorias debe ser al menos uno."
         raise ValueError(msg)
+    if parameters.periods_per_year < 1:
+        msg = "periods_per_year debe ser al menos uno."
+        raise ValueError(msg)
 
-    dt = 1.0 / TRADING_DAYS_PER_YEAR
+    dt = 1.0 / parameters.periods_per_year
     rng = np.random.default_rng(parameters.seed)
     shocks = rng.standard_normal((parameters.horizon, parameters.n_paths))
     drift = annual_return * dt
@@ -92,11 +98,16 @@ def simulate_gbm_paths(
     return initial_value * np.exp(np.vstack([np.zeros(parameters.n_paths), log_paths]))
 
 
-def annualized_log_assumptions(returns: pd.Series[float]) -> tuple[float, float]:
-    """Estimate annualized drift and volatility from daily simple returns.
+def annualized_log_assumptions(
+    returns: pd.Series[float],
+    *,
+    periods_per_year: int = TRADING_DAYS_PER_YEAR,
+) -> tuple[float, float]:
+    """Estimate annualized drift and volatility from period simple returns.
 
     Args:
-        returns: Daily simple returns, for example ``prices.pct_change().dropna()``.
+        returns: Simple returns, one per period, for example ``prices.pct_change().dropna()``.
+        periods_per_year: Number of return periods per year used to annualize.
 
     Returns:
         Tuple ``(annual_return, annual_volatility)`` of the log process: the annualized mean
@@ -104,9 +115,13 @@ def annualized_log_assumptions(returns: pd.Series[float]) -> tuple[float, float]
         :func:`simulate_gbm_paths`.
 
     Raises:
-        ValueError: If there are fewer than two observations or a return is not finite.
+        ValueError: If ``periods_per_year`` is not positive, there are fewer than two
+            observations, or a return is not finite.
 
     """
+    if periods_per_year < 1:
+        msg = "periods_per_year debe ser al menos uno."
+        raise ValueError(msg)
     if len(returns) < MIN_OBSERVATIONS:
         msg = "Se necesitan al menos dos rentabilidades para estimar los supuestos."
         raise ValueError(msg)
@@ -115,8 +130,8 @@ def annualized_log_assumptions(returns: pd.Series[float]) -> tuple[float, float]
         msg = "Las rentabilidades deben ser finitas y mayores que -100 %."
         raise ValueError(msg)
     log_returns = np.log1p(values)
-    annual_return = float(np.mean(log_returns) * TRADING_DAYS_PER_YEAR)
-    annual_volatility = float(np.std(log_returns, ddof=1) * math.sqrt(TRADING_DAYS_PER_YEAR))
+    annual_return = float(np.mean(log_returns) * periods_per_year)
+    annual_volatility = float(np.std(log_returns, ddof=1) * math.sqrt(periods_per_year))
     return annual_return, annual_volatility
 
 
