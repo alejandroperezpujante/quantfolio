@@ -16,6 +16,15 @@ def _slug(value: str) -> str:
     return slug.strip("-")
 
 
+def _cache_stem(ticker: str) -> str:
+    """Return a safe cache filename stem for a ticker."""
+    stem = ticker.replace("/", "-").replace("\\", "-").replace("..", "-").strip("-")
+    if not stem:
+        msg = "El ticker no produce un nombre de caché válido."
+        raise ValueError(msg)
+    return stem
+
+
 class CachedPriceSource(PriceSource):
     """Wrap a price source and reuse local CSV files while they are valid.
 
@@ -71,11 +80,12 @@ class CachedPriceSource(PriceSource):
             The normalized price series, labelled with its provenance.
 
         Raises:
-            ValueError: If the ticker is empty or the upstream source returns no data.
+            ValueError: If the ticker is empty, does not produce a safe cache filename, or
+                the upstream source returns no data.
 
         """
         symbol = validate_ticker(ticker)
-        path = self._cache_dir / _slug(self._source.name) / f"{symbol}.csv"
+        path = self._cache_dir / _slug(self._source.name) / f"{_cache_stem(symbol)}.csv"
         if path.exists() and not self._refresh:
             cached = self._read_cache(path, symbol, start, end)
             if cached is not None:

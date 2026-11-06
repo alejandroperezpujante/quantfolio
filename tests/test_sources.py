@@ -553,3 +553,22 @@ def test_cache_rejects_negative_ttl(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="ttl_days"):
         CachedPriceSource(upstream, cache_dir=tmp_path, ttl_days=-1)
+
+
+def test_cache_sanitizes_tickers_with_separators(tmp_path: Path) -> None:
+    """A pair ticker becomes a single safe filename."""
+    cached = CachedPriceSource(StubSource(TRADING_DATES), cache_dir=tmp_path)
+
+    cached.get_prices("BTC/USD", "2025-01-02", "2025-02-27")
+
+    path = tmp_path / "stub" / "BTC-USD.csv"
+    assert path.exists()
+    assert tmp_path in path.parents
+
+
+def test_cache_rejects_unsafe_ticker_stems(tmp_path: Path) -> None:
+    """A ticker that sanitizes to nothing is rejected."""
+    cached = CachedPriceSource(StubSource(TRADING_DATES), cache_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="caché"):
+        cached.get_prices("../", "2025-01-02", "2025-02-27")
