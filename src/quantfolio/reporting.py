@@ -17,9 +17,7 @@ if TYPE_CHECKING:
     from quantfolio.portfolio import Portfolio
 
 
-# The report exposes each documented option as a keyword argument, so its public signature is
-# intentionally wider than the default Pylint limit.
-def render_portfolio_report(  # noqa: PLR0913
+def render_portfolio_report(
     portfolio: Portfolio,
     *,
     periods_per_year: int = TRADING_DAYS_PER_YEAR,
