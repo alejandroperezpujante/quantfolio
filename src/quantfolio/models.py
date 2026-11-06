@@ -1,13 +1,15 @@
 """Price-series model with automatic descriptive statistics."""
 
+import math
 from dataclasses import dataclass, field
 from typing import cast
 
 import numpy as np
 import pandas as pd
 
-from quantfolio.constants import MIN_OBSERVATIONS
+from quantfolio.constants import MIN_OBSERVATIONS, TRADING_DAYS_PER_YEAR
 from quantfolio.reporting import plot_simulation_paths
+from quantfolio.risk import max_drawdown, sharpe_ratio
 from quantfolio.simulation import (
     MonteCarloParameters,
     annualized_log_assumptions,
@@ -98,6 +100,43 @@ class PriceSeries:
         self.prices.name = self.ticker
         self.mean_price = float(cleaned.mean())
         self.std_price = float(cleaned.std(ddof=1)) if len(cleaned) >= MIN_OBSERVATIONS else 0.0
+
+    def summary(self, *, periods_per_year: int = TRADING_DAYS_PER_YEAR) -> dict[str, float]:
+        """Return the historical return, volatility and risk statistics of the series.
+
+        The annualized return is the arithmetic approximation ``mean * periods_per_year``.
+        Drawdown and Sharpe are delegated to :mod:`quantfolio.risk` with a zero risk-free
+        rate, so a single asset and a portfolio are measured on the same basis.
+
+        Args:
+            periods_per_year: Number of trading periods per year used to annualize.
+
+        Returns:
+            Mapping with the mean daily return, daily volatility, annualized return
+            approximation, annualized volatility, maximum drawdown and Sharpe ratio.
+
+        Raises:
+            ValueError: If ``periods_per_year`` is not positive or there are fewer than two
+                return observations.
+
+        """
+        if periods_per_year < 1:
+            msg = "periods_per_year debe ser al menos uno."
+            raise ValueError(msg)
+        returns = self.prices.pct_change().dropna()
+        if len(returns) < MIN_OBSERVATIONS:
+            msg = "Se necesitan al menos dos observaciones de rentabilidad."
+            raise ValueError(msg)
+        mean_daily = float(returns.mean())
+        std_daily = float(returns.std(ddof=1))
+        return {
+            "mean_daily_return": mean_daily,
+            "daily_volatility": std_daily,
+            "annualized_return_approx": mean_daily * periods_per_year,
+            "annualized_volatility": std_daily * math.sqrt(periods_per_year),
+            "max_drawdown": max_drawdown(returns),
+            "sharpe_ratio": sharpe_ratio(returns, periods_per_year=periods_per_year),
+        }
 
     def simulate_monte_carlo(
         self,
