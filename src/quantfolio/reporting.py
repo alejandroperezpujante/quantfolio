@@ -118,22 +118,24 @@ def _collect_risk_warnings(
 def plot_portfolio_report(portfolio: Portfolio) -> None:
     """Display the analytical dashboard of a portfolio.
 
-    The dashboard shows the price evolution, the cumulative return comparison, the
-    correlation matrix and the evolution of a portfolio invested at a base value of 100.
+    The dashboard shows the aligned price evolution rebased to 100, the cumulative return
+    comparison, the correlation matrix and the evolution of a portfolio invested at a base
+    value of 100.
 
     Args:
         portfolio: Portfolio to plot.
 
     """
-    prices = portfolio.get_prices()
+    prices = portfolio.get_prices().dropna(how="any")
     returns = portfolio.get_returns()
     figure, axes = plt.subplots(2, 2, figsize=(14, 10))
 
     prices_axis = axes[0, 0]
-    prices.plot(ax=prices_axis)
-    prices_axis.set_title("Evolución de precios")
+    normalized_prices = prices.divide(prices.iloc[0]).multiply(PERFORMANCE_BASE)
+    normalized_prices.plot(ax=prices_axis)
+    prices_axis.set_title(f"Evolución de precios (base {PERFORMANCE_BASE:.0f})")
     prices_axis.set_xlabel("Fecha")
-    prices_axis.set_ylabel("Precio")
+    prices_axis.set_ylabel(f"Precio relativo (base {PERFORMANCE_BASE:.0f})")
 
     cumulative_axis = axes[0, 1]
     ((1.0 + returns).cumprod() - 1.0).plot(ax=cumulative_axis)

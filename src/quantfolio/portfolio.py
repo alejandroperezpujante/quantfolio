@@ -171,8 +171,9 @@ class Portfolio:
         The annual drift and volatility of the portfolio log returns are estimated from the
         aligned historical returns unless ``parameters.return_assumption`` or
         ``parameters.volatility_assumption`` are given. The correlation between assets is
-        embedded in the estimated portfolio volatility. The initial value defaults to
-        10,000 units.
+        embedded in the estimated portfolio volatility. ``parameters.periods_per_year`` drives
+        the annualization of the estimate and the time step of the simulation. The initial
+        value defaults to 10,000 units.
 
         Args:
             parameters: Simulation settings; defaults to :class:`MonteCarloParameters`.
@@ -189,7 +190,10 @@ class Portfolio:
         if len(returns) < MIN_OBSERVATIONS:
             msg = "Se necesitan al menos dos observaciones de rentabilidad."
             raise ValueError(msg)
-        annual_return, annual_volatility = annualized_log_assumptions(returns)
+        annual_return, annual_volatility = annualized_log_assumptions(
+            returns,
+            periods_per_year=settings.periods_per_year,
+        )
         if settings.return_assumption is not None:
             annual_return = settings.return_assumption
         if settings.volatility_assumption is not None:

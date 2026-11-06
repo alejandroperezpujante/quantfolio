@@ -107,7 +107,8 @@ class PriceSeries:
 
         The annual drift and volatility are estimated from the historical series unless
         ``parameters.return_assumption`` or ``parameters.volatility_assumption`` are given.
-        The initial value defaults to the last observed price.
+        ``parameters.periods_per_year`` drives the annualization of the estimate and the time
+        step of the simulation. The initial value defaults to the last observed price.
 
         Args:
             parameters: Simulation settings; defaults to :class:`MonteCarloParameters`.
@@ -124,7 +125,10 @@ class PriceSeries:
             msg = "Se necesitan al menos dos precios para estimar la simulación."
             raise ValueError(msg)
         returns = self.prices.pct_change().dropna()
-        annual_return, annual_volatility = annualized_log_assumptions(returns)
+        annual_return, annual_volatility = annualized_log_assumptions(
+            returns,
+            periods_per_year=settings.periods_per_year,
+        )
         if settings.return_assumption is not None:
             annual_return = settings.return_assumption
         if settings.volatility_assumption is not None:
