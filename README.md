@@ -26,7 +26,7 @@ Ortega.
   distribuciones.
 - **Informes** Markdown parametrizables (`.report()`) y panel analítico de gráficos (`.plots_report()`).
 - **Calidad de código**: tipado estricto (`mypy --strict`), `ruff` con todas las reglas activadas, pruebas sin red y
-  cobertura de ramas ≥ 80 % (actual: 99 %), hooks de pre-commit e integración continua en GitHub.
+  cobertura de ramas ≥ 80 % (actual: 100 %), hooks de pre-commit e integración continua en GitHub.
 
 ## Requisitos
 
@@ -38,8 +38,8 @@ Ortega.
 ## Instalación paso a paso
 
 ```console
-git clone <URL-del-repositorio>
-cd taller-b1-t1
+git clone https://github.com/alejandroperezpujante/quantfolio.git
+cd quantfolio
 uv sync
 ```
 
@@ -55,6 +55,9 @@ informe, los gráficos y las simulaciones de principio a fin:
 ```console
 uv run jupyter lab notebooks/quantfolio_demo.ipynb
 ```
+
+Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; como `END` es
+exclusivo, la última sesión incluida es 2026-11-05 en todos los mercados.
 
 ### Carteras por clase de activo
 
@@ -172,9 +175,12 @@ de `get_series` es exclusivo, igual que en `PriceSource`. Si ALFRED sirve un vin
 ejemplo, cuando recorta una fecha futura hasta su último vintage disponible—, `get_series` lanza un `ValueError` en
 lugar de etiquetar los valores con una fecha a la que no pertenecen.
 
-`CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker>.csv`; el archivo se
-reutiliza mientras empiece antes de la fecha solicitada y su último dato siga vigente (margen configurable con
-`ttl_days`), y se reemplaza en caso contrario o con `refresh=True`.
+`CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker-saneado>.csv`
+(por ejemplo, `BTC/USD` → `BTC-USD.csv`); el archivo se reutiliza mientras empiece antes de la fecha solicitada
+y su último dato siga vigente (margen configurable con `ttl_days`), y se reemplaza en caso contrario o con
+`refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de modo que dos tickers que sanean al
+mismo nombre de archivo nunca comparten precios; si la columna no coincide con el ticker pedido, la entrada se
+trata como un fallo de caché.
 
 ### Alpha Vantage opcional
 
@@ -260,6 +266,12 @@ natural.
   datos y advertencias de riesgo, con opciones `periods_per_year`, `include_quality` e `include_warnings`. Las
   advertencias se derivan del estado real de la cartera (cobertura de alineación, concentración en un único activo
   y longitud de la muestra), no de supuestos fijos.
+- El informe incluye, además de la composición y las métricas básicas, la máxima caída
+  histórica, el ratio de Sharpe, el VaR y el CVaR históricos al 95 %, la rentabilidad geométrica
+  (CAGR), la deriva del logaritmo usada por Monte Carlo y el error estándar de la rentabilidad
+  anualizada. `risk_free_rate` y `confidence` son parámetros del método.
+- La sección de calidad muestra el periodo de la muestra, los años de historia, la cobertura por
+  activo y el porcentaje de intervalos entre retornos que abarcan más de un día natural.
 - `Portfolio.plots_report()` muestra el panel analítico: evolución de precios **reajustada a base 100**,
   comparativa de rentabilidad acumulada, matriz de correlación y evolución del valor de la cartera (base 100).
 - `PriceSeries.plot_simulation()` y `Portfolio.plot_simulation()` visualizan las trayectorias simuladas y la
@@ -374,6 +386,9 @@ aprobatoria.
 - Las carteras que mezclan calendarios (por ejemplo, cripto y acciones) calculan los retornos
   sobre la intersección de fechas; algunos intervalos entre retornos abarcan varios días naturales
   y la anualización con 252 o 365 periodos es aproximada. El informe muestra el porcentaje afectado.
+  Una cartera de un solo calendario también puede superar el 5 % porque los fines de semana cuentan
+  como días naturales, así que la advertencia describe ese porcentaje medido y no afirma que la
+  cartera mezcle calendarios.
 - Los proveedores externos pueden cambiar sus límites o interfaces (p. ej. Stooq pasó a exigir JavaScript durante
   el desarrollo del taller, por lo que se sustituyó por Kraken, que es una API pública sin clave).
 
@@ -383,7 +398,7 @@ aprobatoria.
 |---|---|
 | Repositorio y despliegue *plug-and-play* | `pyproject.toml` + `uv.lock` (instalación con `uv sync`), README, `.gitignore`, CI. |
 | Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
-| Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados, correlaciones). |
+| Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados y correlaciones, calculadas en `plots_report`). |
 | Motor Monte Carlo | `Portfolio.simulate_monte_carlo()` y `PriceSeries.simulate_monte_carlo()` con `MonteCarloParameters`; `plot_simulation()`. |
 | Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; sección de validación de entradas en este README. |
 | Estructura y diagramado | `src/` solo biblioteca, `notebooks/` como entrada reproducible y `docs/architecture.md` con los diagramas. |
