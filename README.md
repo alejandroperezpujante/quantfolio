@@ -116,6 +116,7 @@ portfolio.plot_simulation(simulations)
 │   ├── portfolio.py         # Portfolio: pesos, alineación, métricas, informes y Monte Carlo
 │   ├── simulation.py        # motor GBM y MonteCarloParameters
 │   ├── risk.py              # medidas puras de riesgo: drawdown, Sharpe, CAGR, VaR y CVaR
+│   ├── validation.py        # validadores de entrada compartidos
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED vía ALFRED (vintages)
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
@@ -235,6 +236,10 @@ razones:
 
 El coste asumido es que no se admiten series atípicas (p. ej. valores negativos, propios de precios de energía en
 algunos mercados) — una limitación consciente y documentada en lugar de un comportamiento accidental.
+
+Los validadores compartidos viven en `quantfolio.validation`: la cartera, la serie de precios, el motor de
+simulación y las medidas de riesgo los importan desde un único módulo, de modo que la misma entrada inválida
+produce siempre el mismo mensaje en español.
 
 ## Simulación de Monte Carlo
 
