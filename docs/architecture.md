@@ -149,7 +149,7 @@ flowchart LR
         KR["KrakenSource<br/>criptomonedas"]
         AV["AlphaVantageSource<br/>activos diarios opcionales"]
         RT["runtime.py<br/>registro inmutable"]
-        CP["capabilities.py<br/>validación y caché"]
+        CP["alpha_vantage/capabilities.py<br/>validación y caché"]
         CA["CachedPriceSource<br/>caché CSV"]
         FR["FredMacroSource<br/>macro y tipos"]
     end
@@ -197,7 +197,8 @@ cuatro clases en una cartera diversificada.
 | `quantfolio.validation` | Validadores de entrada compartidos (periodos, confianza, tasa libre de riesgo y rentabilidades). |
 | `quantfolio.simulation` | `MonteCarloParameters` y el motor GBM compartido por activo y cartera. |
 | `quantfolio.reporting` | Generación del informe Markdown y de todas las visualizaciones. |
-| `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken, Alpha Vantage) y caché CSV. |
+| `quantfolio.sources` | Contrato `PriceSource`, proveedores base (Yahoo, Kraken) y caché CSV. |
+| `quantfolio.sources.alpha_vantage` | Proveedor opcional de Alpha Vantage: cliente HTTP, capacidades y adaptador `PriceSource`. |
 | `quantfolio.runtime` | Registro inmutable y descubrimiento opcional de Alpha Vantage; FRED permanece separado. |
 | `quantfolio.macro` | `MacroSeries` y proveedor FRED vía ALFRED, con vintages punto-en-el-tiempo, para la tipología de datos adicional. |
 | `quantfolio.constants` | Constantes compartidas (sesiones por año, umbrales de diagnóstico, etc.). |
