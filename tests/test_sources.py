@@ -660,3 +660,16 @@ def test_cache_reuses_files_for_numeric_looking_tickers(tmp_path: Path) -> None:
     cached.get_prices("123", "2025-01-02", "2025-02-27")
 
     assert upstream.calls == 1
+
+
+@pytest.mark.parametrize("ticker", ["NA", "nan", "null"])
+def test_cache_reuses_files_for_na_like_tickers(tmp_path: Path, ticker: str) -> None:
+    """A stamp pandas would read as missing still identifies its cache file."""
+    upstream = StubSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    cached.get_prices(ticker, "2025-01-02", "2025-02-27")
+    second = cached.get_prices(ticker, "2025-01-02", "2025-02-27")
+
+    assert upstream.calls == 1
+    assert second.ticker == ticker

@@ -112,13 +112,18 @@ class CachedPriceSource(PriceSource):
         return PriceSeries(ticker=ticker, prices=window, source=self.name)
 
     def _read_cached_series(self, path: Path, ticker: str) -> PriceSeries | None:
-        """Return the cached series when the file belongs to the requested ticker."""
+        """Return the cached series when the file belongs to the requested ticker.
+
+        The CSV is read without NA coercion so a stamped ticker such as ``NA`` keeps its text
+        form; a genuinely corrupt row still raises inside the ``except`` and counts as a miss.
+        """
         try:
             frame = pd.read_csv(
                 path,
                 index_col="Date",
                 parse_dates=True,
                 dtype={"Close": float, "ticker": str},
+                keep_default_na=False,
             )
             if frame.empty or not self._matches_ticker(frame, ticker):
                 return None
