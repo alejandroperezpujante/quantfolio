@@ -140,7 +140,7 @@ jobs:
               "",
               "| Gate | Configuration |",
               "|---|---|",
-              "| `ruff check` | all rules enabled |",
+              "| `ruff check` | all rules with the documented exceptions |",
               "| `ruff format --check` | canonical formatting |",
               "| `mypy src tests` | strict typing |",
               "| `pytest` | network-free tests, coverage ≥ 80 % |",
