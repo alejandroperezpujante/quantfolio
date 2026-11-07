@@ -1,0 +1,43 @@
+{
+  "name": "Quantfolio",
+  "dockerComposeFile": ["compose.yaml", "compose.git-worktree.yaml"],
+  "service": "devcontainer",
+  "runServices": ["devcontainer", "postgres", "sonarqube"],
+  "workspaceFolder": "/workspaces/quantfolio",
+  "initializeCommand": "sh .devcontainer/initialize.sh",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "forwardPorts": ["sonarqube:9000"],
+  "portsAttributes": {
+    "sonarqube:9000": {
+      "label": "Local SonarQube",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "uv sync --frozen",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "SonarSource.sonarlint-vscode"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/home/vscode/quantfolio-venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"],
+        "python.testing.unittestEnabled": false,
+        "mypy-type-checker.args": [
+          "--python-executable",
+          "/home/vscode/quantfolio-venv/bin/python"
+        ],
+        "sonarlint.connectedMode.project": {
+          "connectionId": "quantfolio-local",
+          "projectKey": "quantfolio"
+        }
+      }
+    }
+  }
+}
