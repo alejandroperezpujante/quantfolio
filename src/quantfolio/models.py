@@ -16,6 +16,7 @@ from quantfolio.simulation import (
     paths_to_frame,
     simulate_gbm_paths,
 )
+from quantfolio.validation import validate_periods_per_year, validate_returns
 
 
 def clean_numeric_series(
@@ -121,13 +122,9 @@ class PriceSeries:
                 return observations.
 
         """
-        if periods_per_year < 1:
-            msg = "periods_per_year debe ser al menos uno."
-            raise ValueError(msg)
+        validate_periods_per_year(periods_per_year)
         returns = self.prices.pct_change().dropna()
-        if len(returns) < MIN_OBSERVATIONS:
-            msg = "Se necesitan al menos dos observaciones de rentabilidad."
-            raise ValueError(msg)
+        validate_returns(returns)
         mean_daily = float(returns.mean())
         std_daily = float(returns.std(ddof=1))
         return {
@@ -188,11 +185,16 @@ class PriceSeries:
 
     @staticmethod
     def plot_simulation(simulations: pd.DataFrame, *, max_paths: int = 100) -> None:
-        """Display simulated trajectories and the distribution of final values.
+        """Display simulated trajectories and the distribution of final prices.
 
         Args:
             simulations: Path matrix returned by :meth:`simulate_monte_carlo`.
             max_paths: Maximum number of trajectories to draw.
 
         """
-        plot_simulation_paths(simulations, max_paths=max_paths, value_label="Precio")
+        plot_simulation_paths(
+            simulations,
+            max_paths=max_paths,
+            value_label="Precio",
+            final_label="precio final",
+        )

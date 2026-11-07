@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from quantfolio.constants import MIN_OBSERVATIONS, TRADING_DAYS_PER_YEAR
+from quantfolio.validation import validate_finite_returns, validate_periods_per_year
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -85,9 +86,7 @@ def simulate_gbm_paths(
     if parameters.n_paths < 1:
         msg = "El número de trayectorias debe ser al menos uno."
         raise ValueError(msg)
-    if parameters.periods_per_year < 1:
-        msg = "periods_per_year debe ser al menos uno."
-        raise ValueError(msg)
+    validate_periods_per_year(parameters.periods_per_year)
 
     dt = 1.0 / parameters.periods_per_year
     rng = np.random.default_rng(parameters.seed)
@@ -119,17 +118,12 @@ def annualized_log_assumptions(
             observations, or a return is not finite.
 
     """
-    if periods_per_year < 1:
-        msg = "periods_per_year debe ser al menos uno."
-        raise ValueError(msg)
+    validate_periods_per_year(periods_per_year)
     if len(returns) < MIN_OBSERVATIONS:
         msg = "Se necesitan al menos dos rentabilidades para estimar los supuestos."
         raise ValueError(msg)
-    values = returns.to_numpy()
-    if not np.all(np.isfinite(values)) or np.any(values <= -1.0):
-        msg = "Las rentabilidades deben ser finitas y mayores que -100 %."
-        raise ValueError(msg)
-    log_returns = np.log1p(values)
+    validate_finite_returns(returns)
+    log_returns = np.log1p(returns.to_numpy())
     annual_return = float(np.mean(log_returns) * periods_per_year)
     annual_volatility = float(np.std(log_returns, ddof=1) * math.sqrt(periods_per_year))
     return annual_return, annual_volatility

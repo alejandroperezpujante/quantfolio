@@ -349,6 +349,15 @@ def test_portfolio_risk_metrics_match_manual() -> None:
     )
 
 
+@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf"), float("-inf")])
+def test_sharpe_ratio_rejects_non_finite_risk_free_rate(risk_free_rate: float) -> None:
+    """The portfolio entry point inherits the finiteness validation."""
+    portfolio = build_portfolio()
+
+    with pytest.raises(ValueError, match="finito"):
+        portfolio.sharpe_ratio(risk_free_rate=risk_free_rate)
+
+
 def test_report_includes_risk_metrics() -> None:
     """The Markdown report shows drawdown, Sharpe, VaR and CVaR."""
     report = build_portfolio().report()
@@ -375,10 +384,11 @@ def test_report_forwards_the_risk_parameters() -> None:
     )
 
     assert f"| Ratio de Sharpe (rf=2.00%) | {sharpe:.2f} |" in report
+    assert f"| Máxima caída histórica | {portfolio.max_drawdown():.2%} |" in report
     assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in report
     assert f"| CVaR histórico diario (90%) | {conditional_value_at_risk:.2%} |" in report
     assert f"| Ratio de Sharpe (rf=2.00%) | {monthly_sharpe:.2f} |" in monthly_report
-    assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in monthly_report
+    assert f"| VaR histórico mensual (90%) | {value_at_risk:.2%} |" in monthly_report
 
 
 def test_report_explains_the_tail_measure_sign_convention() -> None:
@@ -562,6 +572,15 @@ def test_report_rejects_invalid_confidence() -> None:
 
     with pytest.raises(ValueError, match="confidence"):
         portfolio.report(confidence=1.5)
+
+
+@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf"), float("-inf")])
+def test_report_rejects_non_finite_risk_free_rate(risk_free_rate: float) -> None:
+    """A non-finite rate would render as nan or inf in the Sharpe row."""
+    portfolio = build_portfolio()
+
+    with pytest.raises(ValueError, match="finito"):
+        portfolio.report(risk_free_rate=risk_free_rate)
 
 
 def test_report_degrades_when_the_metrics_overflow() -> None:

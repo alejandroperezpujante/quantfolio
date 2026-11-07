@@ -9,6 +9,7 @@ import pytest
 
 from quantfolio.portfolio import Portfolio
 from quantfolio.reporting import plot_portfolio_report, plot_simulation_paths
+from quantfolio.risk import max_drawdown
 from quantfolio.simulation import MonteCarloParameters
 from tests.helpers import make_series
 
@@ -32,6 +33,71 @@ def _build_portfolio() -> Portfolio:
         },
         weights={"AAA": 0.5, "BBB": 0.5},
     )
+
+
+def test_report_aligns_the_returns_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The report computes the aligned returns once for the series and once inside summary."""
+    calls: list[int] = []
+    original = Portfolio.portfolio_returns
+
+    def counting(self: Portfolio) -> pd.Series[float]:
+        calls.append(1)
+        return original(self)
+
+    monkeypatch.setattr(Portfolio, "portfolio_returns", counting)
+
+    _build_portfolio().report()
+
+    assert len(calls) == 2
+
+
+def test_report_does_not_recompute_the_drawdown_through_the_portfolio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The drawdown is computed once from the aligned returns, not through the portfolio."""
+
+    def forbidden(_self: Portfolio) -> float:
+        msg = "the report must reuse the aligned returns"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(Portfolio, "max_drawdown", forbidden)
+
+    _build_portfolio().report()
+
+
+def test_report_computes_the_drawdown_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The report derives the drawdown once from the aligned returns."""
+    calls: list[int] = []
+
+    def counting(returns: pd.Series[float]) -> float:
+        calls.append(1)
+        return max_drawdown(returns)
+
+    monkeypatch.setattr("quantfolio.reporting.max_drawdown_of_returns", counting)
+
+    _build_portfolio().report()
+
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("periods_per_year", "label"),
+    [
+        (252, "diario"),
+        (365, "diario"),
+        (52, "semanal"),
+        (12, "mensual"),
+        (4, "trimestral"),
+        (1, "anual"),
+        (6, "por periodo"),
+    ],
+)
+def test_report_labels_the_var_period(periods_per_year: int, label: str) -> None:
+    """The VaR row names the return period instead of hardcoding 'diario'."""
+    report = _build_portfolio().report(periods_per_year=periods_per_year, confidence=0.9)
+
+    assert f"VaR histórico {label} (90%)" in report
+    assert f"CVaR histórico {label} (90%)" in report
 
 
 def test_plot_portfolio_report_runs_headless(
@@ -109,6 +175,9 @@ def test_plot_simulation_paths_defaults_to_the_portfolio_label(
     plot_simulation_paths(simulations, max_paths=1)
 
     assert plt.gcf().axes[0].get_ylabel() == "Valor de la cartera"
+    distribution_axis = plt.gcf().axes[1]
+    assert distribution_axis.get_title() == "Distribución del valor final"
+    assert distribution_axis.get_xlabel() == "Valor final"
 
 
 def test_plot_simulation_paths_rejects_empty_frames() -> None:
@@ -155,3 +224,18 @@ def test_series_simulation_uses_the_price_label(
     asset.plot_simulation(simulations, max_paths=1)
 
     assert plt.gcf().axes[0].get_ylabel() == "Precio"
+
+
+def test_series_simulation_labels_the_distribution_as_final_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single-asset distribution panel speaks of prices, not portfolio values."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+    asset = make_series("AAA", [10.0, 11.0, 12.0, 13.0])
+    simulations = asset.simulate_monte_carlo(MonteCarloParameters(n_paths=2, horizon=5, seed=1))
+
+    asset.plot_simulation(simulations, max_paths=1)
+
+    distribution_axis = plt.gcf().axes[1]
+    assert distribution_axis.get_title() == "Distribución del precio final"
+    assert distribution_axis.get_xlabel() == "Precio final"

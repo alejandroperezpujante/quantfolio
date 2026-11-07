@@ -15,13 +15,50 @@ from quantfolio.constants import (
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
 )
-from quantfolio.risk import compound_annual_growth, drift_standard_error
+from quantfolio.risk import (
+    compound_annual_growth,
+    drift_standard_error,
+    historical_cvar,
+    historical_var,
+    sharpe_ratio,
+)
+from quantfolio.risk import (
+    max_drawdown as max_drawdown_of_returns,
+)
 from quantfolio.simulation import annualized_log_assumptions
+from quantfolio.validation import (
+    validate_confidence,
+    validate_periods_per_year,
+    validate_risk_free_rate,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
 
     from quantfolio.portfolio import Portfolio
+
+#: Human-readable name of the return period implied by periods_per_year.
+_PERIOD_LABELS: dict[int, str] = {
+    252: "diario",
+    365: "diario",
+    52: "semanal",
+    12: "mensual",
+    4: "trimestral",
+    1: "anual",
+}
+
+
+def _period_label(periods_per_year: int) -> str:
+    """Return the human-readable name of a return period.
+
+    Args:
+        periods_per_year: Number of return periods in a year.
+
+    Returns:
+        Name of the period, or "por periodo" when the factor has no common name.
+
+    """
+    return _PERIOD_LABELS.get(periods_per_year, "por periodo")
 
 
 def render_portfolio_report(
@@ -45,7 +82,9 @@ def render_portfolio_report(
         portfolio: Portfolio to report on.
         periods_per_year: Number of trading periods per year used to annualize the mean return,
             the volatility and the Sharpe ratio; the VaR and the CVaR are expressed per return
-            period (daily in the examples).
+            period and their label follows this factor (252 or 365 read "diario", 52 "semanal",
+            12 "mensual", 4 "trimestral", 1 "anual", anything else "por periodo"). It must match
+            the sampling frequency of the price data.
         include_quality: Whether to include the data-quality diagnostics section.
         include_warnings: Whether to include the risk-warnings section.
         risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
@@ -55,16 +94,13 @@ def render_portfolio_report(
         Markdown text with composition, metrics, diagnostics and risk warnings.
 
     Raises:
-        ValueError: If ``periods_per_year`` is not positive or ``confidence`` is not strictly
-            between zero and one.
+        ValueError: If ``periods_per_year`` is not positive, ``confidence`` is not strictly
+            between zero and one, or ``risk_free_rate`` is not finite.
 
     """
-    if periods_per_year < 1:
-        msg = "periods_per_year debe ser al menos uno."
-        raise ValueError(msg)
-    if not 0.0 < confidence < 1.0:
-        msg = "confidence debe estar entre 0 y 1."
-        raise ValueError(msg)
+    validate_periods_per_year(periods_per_year)
+    validate_confidence(confidence)
+    validate_risk_free_rate(risk_free_rate)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
     metrics: dict[str, float] | None = None
@@ -73,14 +109,14 @@ def render_portfolio_report(
     metrics_lines: list[str] | None = None
     try:
         metrics = portfolio.summary(periods_per_year=periods_per_year)
-        max_drawdown = portfolio.max_drawdown()
+        max_drawdown = max_drawdown_of_returns(returns)
         metrics_lines = _render_metrics_section(
-            portfolio,
             metrics=metrics,
             returns=returns,
             periods_per_year=periods_per_year,
             risk_free_rate=risk_free_rate,
             confidence=confidence,
+            max_drawdown=max_drawdown,
         )
     except ValueError:
         metrics = None
@@ -188,35 +224,36 @@ def _render_quality_section(
 
 
 def _render_metrics_section(
-    portfolio: Portfolio,
     *,
     metrics: dict[str, float],
     returns: pd.Series[float],
     periods_per_year: int,
     risk_free_rate: float,
     confidence: float,
+    max_drawdown: float,
 ) -> list[str]:
     """Render the historical metrics table and its explanatory notes.
 
     Args:
-        portfolio: Portfolio being reported, which supplies the risk measures.
         metrics: Statistics returned by ``Portfolio.summary``.
-        returns: Portfolio returns used to annualize the drift and the growth measures.
+        returns: Aligned portfolio returns, already held by the report.
         periods_per_year: Number of trading periods per year used to annualize.
         risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
         confidence: Confidence level of the value-at-risk measures.
+        max_drawdown: Maximum drawdown already computed from ``returns``.
 
     Returns:
         Markdown lines of the metrics section, table and notes included.
 
     """
-    max_drawdown = portfolio.max_drawdown()
-    sharpe = portfolio.sharpe_ratio(
+    sharpe = sharpe_ratio(
+        returns,
         risk_free_rate=risk_free_rate,
         periods_per_year=periods_per_year,
     )
-    value_at_risk = portfolio.value_at_risk(confidence=confidence)
-    conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=confidence)
+    value_at_risk = historical_var(returns, confidence=confidence)
+    conditional_value_at_risk = historical_cvar(returns, confidence=confidence)
+    period_label = _period_label(periods_per_year)
     standard_error = drift_standard_error(returns, periods_per_year=periods_per_year)
     point_estimate = metrics["annualized_return_approx"]
     lower = point_estimate - 1.96 * standard_error
@@ -241,8 +278,8 @@ def _render_metrics_section(
         f"| Crecimiento mediano implícito (exp(m)-1) | {median_growth:.2%} |",
         f"| Máxima caída histórica | {max_drawdown:.2%} |",
         f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
-        f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
-        f"| CVaR histórico diario ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
+        f"| VaR histórico {period_label} ({confidence:.0%}) | {value_at_risk:.2%} |",
+        f"| CVaR histórico {period_label} ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
         "",
         "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._",
         "",
@@ -385,6 +422,7 @@ def plot_simulation_paths(
     *,
     max_paths: int = 100,
     value_label: str = "Valor de la cartera",
+    final_label: str = "valor final",
 ) -> None:
     """Display simulated trajectories and the distribution of final values.
 
@@ -392,6 +430,8 @@ def plot_simulation_paths(
         simulations: Path matrix returned by a ``simulate_monte_carlo`` method.
         max_paths: Maximum number of trajectories to draw.
         value_label: Label of the trajectory axis, which names the simulated quantity.
+        final_label: Label of the final-value axis and of the distribution title, which names
+            the simulated quantity at the end of the horizon.
 
     Raises:
         ValueError: If there are no simulations or ``max_paths`` is not positive.
@@ -416,8 +456,8 @@ def plot_simulation_paths(
     final_values = simulations.iloc[-1]
     distribution_axis.hist(final_values, bins=40)
     distribution_axis.axvline(final_values.median(), linestyle="--", label="Mediana")
-    distribution_axis.set_title("Distribución del valor final")
-    distribution_axis.set_xlabel("Valor final")
+    distribution_axis.set_title(f"Distribución del {final_label}")
+    distribution_axis.set_xlabel(final_label.capitalize())
     distribution_axis.set_ylabel("Número de escenarios")
     distribution_axis.legend()
 

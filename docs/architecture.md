@@ -109,7 +109,7 @@ classDiagram
         <<module>>
         +render_portfolio_report(portfolio, ...) str
         +plot_portfolio_report(portfolio) None
-        +plot_simulation_paths(simulations, max_paths) None
+        +plot_simulation_paths(simulations, max_paths, value_label, final_label) None
     }
 
     Portfolio o-- "1..*" PriceSeries : agrega
@@ -194,6 +194,7 @@ cuatro clases en una cartera diversificada.
 | `quantfolio.models` | `PriceSeries` (limpieza, estadísticos automáticos) y utilidades numéricas. |
 | `quantfolio.portfolio` | `Portfolio`: validación de pesos, alineación temporal, métricas, informe y Monte Carlo. |
 | `quantfolio.risk` | Medidas de riesgo puras: drawdown, Sharpe, CAGR, error estándar de la deriva y VaR/CVaR históricos. |
+| `quantfolio.validation` | Validadores de entrada compartidos (periodos, confianza, tasa libre de riesgo y rentabilidades). |
 | `quantfolio.simulation` | `MonteCarloParameters` y el motor GBM compartido por activo y cartera. |
 | `quantfolio.reporting` | Generación del informe Markdown y de todas las visualizaciones. |
 | `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken, Alpha Vantage) y caché CSV. |

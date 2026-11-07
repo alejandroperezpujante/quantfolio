@@ -25,6 +25,7 @@ from quantfolio.simulation import (
     paths_to_frame,
     simulate_gbm_paths,
 )
+from quantfolio.validation import validate_periods_per_year, validate_returns
 
 if TYPE_CHECKING:
     from quantfolio.models import PriceSeries
@@ -188,13 +189,9 @@ class Portfolio:
                 return observations.
 
         """
-        if periods_per_year < 1:
-            msg = "periods_per_year debe ser al menos uno."
-            raise ValueError(msg)
+        validate_periods_per_year(periods_per_year)
         returns = self.portfolio_returns()
-        if len(returns) < MIN_OBSERVATIONS:
-            msg = "Se necesitan al menos dos observaciones de rentabilidad."
-            raise ValueError(msg)
+        validate_returns(returns)
         mean_daily = float(returns.mean())
         std_daily = float(returns.std(ddof=1))
         return {
@@ -224,8 +221,8 @@ class Portfolio:
             Annualized mean excess return divided by the annualized volatility.
 
         Raises:
-            ValueError: If ``periods_per_year`` is not positive or there are fewer than two
-                return observations.
+            ValueError: If ``periods_per_year`` is not positive, ``risk_free_rate`` is not
+                finite, or there are fewer than two return observations.
 
         """
         return sharpe_ratio_of_returns(
@@ -235,11 +232,11 @@ class Portfolio:
         )
 
     def value_at_risk(self, *, confidence: float = 0.95) -> float:
-        """Return the historical daily VaR at the requested confidence."""
+        """Return the historical VaR of a portfolio return period at the confidence."""
         return historical_var(self.portfolio_returns(), confidence=confidence)
 
     def conditional_value_at_risk(self, *, confidence: float = 0.95) -> float:
-        """Return the historical daily CVaR at the requested confidence."""
+        """Return the historical CVaR of a portfolio return period at the confidence."""
         return historical_cvar(self.portfolio_returns(), confidence=confidence)
 
     def simulate_monte_carlo(
@@ -267,9 +264,7 @@ class Portfolio:
         """
         settings = parameters if parameters is not None else MonteCarloParameters()
         returns = self.portfolio_returns()
-        if len(returns) < MIN_OBSERVATIONS:
-            msg = "Se necesitan al menos dos observaciones de rentabilidad."
-            raise ValueError(msg)
+        validate_returns(returns)
         annual_return, annual_volatility = annualized_log_assumptions(
             returns,
             periods_per_year=settings.periods_per_year,
@@ -316,7 +311,9 @@ class Portfolio:
         Args:
             periods_per_year: Number of trading periods per year used to annualize the mean
                 return, the volatility and the Sharpe ratio; the VaR and the CVaR are expressed
-                per return period (daily in the examples).
+                per return period and their label follows this factor (252 or 365 read "diario",
+                52 "semanal", 12 "mensual", 4 "trimestral", 1 "anual", anything else
+                "por periodo"). It must match the sampling frequency of the price data.
             include_quality: Whether to include the data-quality diagnostics section.
             include_warnings: Whether to include the risk-warnings section.
             risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
@@ -327,8 +324,8 @@ class Portfolio:
 
         Raises:
             ValueError: If ``periods_per_year`` is not positive, ``confidence`` is not
-                strictly between zero and one, or the assets share fewer than two dates
-                (disjoint calendars).
+                strictly between zero and one, ``risk_free_rate`` is not finite, or the
+                assets share fewer than two dates (disjoint calendars).
 
         """
         return render_portfolio_report(

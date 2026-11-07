@@ -116,6 +116,7 @@ portfolio.plot_simulation(simulations)
 │   ├── portfolio.py         # Portfolio: pesos, alineación, métricas, informes y Monte Carlo
 │   ├── simulation.py        # motor GBM y MonteCarloParameters
 │   ├── risk.py              # medidas puras de riesgo: drawdown, Sharpe, CAGR, VaR y CVaR
+│   ├── validation.py        # validadores de entrada compartidos
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED vía ALFRED (vintages)
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
@@ -236,6 +237,11 @@ razones:
 El coste asumido es que no se admiten series atípicas (p. ej. valores negativos, propios de precios de energía en
 algunos mercados) — una limitación consciente y documentada en lugar de un comportamiento accidental.
 
+Los validadores compartidos viven en `quantfolio.validation`: la cartera, la serie de precios, el motor de
+simulación y las medidas de riesgo los importan desde un único módulo, de modo que la misma entrada inválida
+produce el mismo mensaje en español. Los chequeos con contexto propio (por ejemplo, los dos retornos que
+necesita la estimación de los supuestos de Monte Carlo) conservan su mensaje específico.
+
 ## Simulación de Monte Carlo
 
 El motor modela el valor de la cartera (o el precio de un activo) como un **movimiento browniano geométrico**
@@ -263,7 +269,8 @@ Los supuestos históricos se estiman con la media y la desviación típica de la
 multiplicadas por `periods_per_year` y $\sqrt{\text{periods\_per\_year}}$, respectivamente. La covarianza entre
 activos entra en la simulación de la cartera a través de su volatilidad estimada, $w^{T}\Sigma w$. La simulación es
 un **método de `Portfolio`** (`simulate_monte_carlo`) y también está disponible en `PriceSeries` para un activo
-individual; `plot_simulation()` muestra las trayectorias y la distribución del valor final. Los cuadernos de
+individual; `plot_simulation()` muestra las trayectorias y la distribución del valor final de una cartera o del
+precio final de un activo. Los cuadernos de
 acciones, índice y renta fija usan 252; el de cripto usa 365 y un horizonte de 365 pasos para representar un año
 natural.
 
@@ -283,7 +290,7 @@ natural.
 - `Portfolio.plots_report()` muestra el panel analítico: evolución de precios **reajustada a base 100**,
   comparativa de rentabilidad acumulada, matriz de correlación y evolución del valor de la cartera (base 100).
 - `PriceSeries.plot_simulation()` y `Portfolio.plot_simulation()` visualizan las trayectorias simuladas y la
-  distribución del valor final.
+  distribución final: del precio final en un activo y del valor final en una cartera.
 
 ## Arquitectura
 
