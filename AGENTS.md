@@ -33,12 +33,13 @@ repository now contains the toolkit implementation, its tests and its documentat
 ## Quality gates (must pass before any commit)
 
 - `uv run ruff check .`
-- `uv run ruff format .`
-- `uv run mypy src`
+- `uv run ruff format --check .`
+- `uv run mypy src tests`
 - `uv run pytest`
 - `uv run pre-commit run --all-files`
 
-Pre-commit hooks are installed; do not bypass them with `--no-verify`.
+Pre-commit hooks are installed; do not bypass them with `--no-verify`. GitHub Actions runs the first
+four gates; the `pre-commit` gate is local only.
 
 ## SonarQube analysis
 
@@ -57,7 +58,8 @@ sonar-scanner          # analyzes src/ + notebooks/ + tests/; fails when the gat
 `sonar-project.properties` holds the project settings; server URL and token come from the environment.
 
 CI: `.github/workflows/ci.yml` runs on every pull request and on every push to `main`. Its `Quality gates` job
-runs the five local gates and uploads the `test-report` artifact (`coverage.xml`, `junit.xml`,
+runs four of the five local gates (`ruff check`, `ruff format --check`, `mypy src tests` and `pytest`;
+`pre-commit` stays local) and uploads the `test-report` artifact (`coverage.xml`, `junit.xml`,
 `test-report/test-summary.json`); the reusable `.github/workflows/sonarqube.yml` is then called with those
 reports, joins the tailnet as an ephemeral `tag:ci` node and fails the run when the strict quality gate is not
 green. Required repository secrets/variables: `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET` (Tailscale OAuth
@@ -92,7 +94,8 @@ request revision.
 - Docstrings and code comments are written in **English** (Google style, as in the scaffold).
 - User-facing text is written in **Spanish**: exception messages, Markdown reports, plot labels
   and `print` output in notebooks.
-- Public API is re-exported from `src/quantfolio/__init__.py`; keep `__all__` sorted.
+- Public API is re-exported from `src/quantfolio/__init__.py`; keep `__all__` isort-sorted — constants
+  first, then classes, then functions — as ruff's `RUF022` enforces.
 - New market-data providers must implement the `quantfolio.sources.PriceSource` contract and
   emit the same internal objects as the existing providers.
 - Mathematical formulas in Markdown use LaTeX: `$...$` inline and `$$...$$` for display blocks.

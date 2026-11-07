@@ -25,8 +25,9 @@ Ortega.
   periodos por año), aplicable a un activo individual o a la cartera completa, con visualización de trayectorias y
   distribuciones.
 - **Informes** Markdown parametrizables (`.report()`) y panel analítico de gráficos (`.plots_report()`).
-- **Calidad de código**: tipado estricto (`mypy --strict`), `ruff` con todas las reglas activadas, pruebas sin red y
-  cobertura de ramas ≥ 80 % (actual: 100 %), hooks de pre-commit e integración continua en GitHub.
+- **Calidad de código**: tipado estricto (`mypy --strict`), `ruff` con `select = ["ALL"]` y las excepciones
+  documentadas en `pyproject.toml`, pruebas sin red y cobertura de ramas ≥ 80 % (actual: 100 %), hooks de
+  pre-commit e integración continua en GitHub.
 
 ## Requisitos
 
@@ -120,6 +121,7 @@ portfolio.plot_simulation(simulations)
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED vía ALFRED (vintages)
 │   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
+│       └── alpha_vantage/   # proveedor opcional: cliente, capacidades y provider
 ├── notebooks/               # punto de entrada y carteras por clase de activo
 │   ├── quantfolio_demo.ipynb
 │   ├── portfolio_stocks.ipynb
@@ -188,7 +190,9 @@ lugar de etiquetar los valores con una fecha a la que no pertenecen.
 y su último dato siga vigente (margen configurable con `ttl_days`), y se reemplaza en caso contrario o con
 `refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de modo que dos tickers que sanean al
 mismo nombre de archivo nunca comparten precios; si la columna no coincide con el ticker pedido, la entrada se
-trata como un fallo de caché.
+trata como un fallo de caché. Los CSV escritos por versiones anteriores, sin la columna `ticker`, se aceptan solo
+cuando el ticker no necesita saneado (el nombre del fichero coincide exactamente con el ticker); en caso contrario
+la entrada cuenta como fallo de caché y se regenera.
 
 ### Alpha Vantage opcional
 
@@ -300,16 +304,17 @@ El diagrama UML de clases y el flujo del sistema están en [`docs/architecture.m
 ## Calidad, pruebas e integración continua
 
 ```console
-uv run ruff check .        # linter (todas las reglas)
+uv run ruff check .        # linter (todas las reglas, con las excepciones de pyproject.toml)
 uv run ruff format --check .  # formato
 uv run mypy src tests      # tipado estricto
 uv run pytest              # pruebas + cobertura (falla por debajo del 80 %)
-uv run pre-commit run --all-files  # los mismos hooks que CI
+uv run pre-commit run --all-files  # quinta puerta, local (incluye hooks de higiene)
 ```
 
 La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y cubre validaciones,
-limpieza, alineación, caché, simulaciones y generación de informes. GitHub Actions ejecuta los mismos cinco
-controles en cada *pull request* y en cada `push` a `main` (flujo [`ci.yml`](.github/workflows/ci.yml)) y
+limpieza, alineación, caché, simulaciones y generación de informes. GitHub Actions repite cuatro de los cinco
+controles —todos salvo `pre-commit`, que es una puerta local— en cada *pull request* y en cada `push` a `main`
+(flujo [`ci.yml`](.github/workflows/ci.yml)) y
 publica la evidencia de cada ejecución: un resumen en la página del *run* y el artefacto `test-report` con
 `coverage.xml`, `junit.xml` y `test-summary.json`. En los *pull requests* se añade además un comentario con la
 evidencia consolidada de las pruebas y del análisis de calidad. La rama `main` está protegida: los `push`
@@ -342,12 +347,12 @@ y el token de análisis se pasan por entorno para no versionar secretos.
 ### Integración continua del análisis
 
 El flujo [`ci.yml`](.github/workflows/ci.yml) se ejecuta en cada *pull request* y en cada `push` a `main`. Su
-trabajo `Quality gates` ejecuta los controles locales y publica el artefacto `test-report` (`coverage.xml`,
-`junit.xml` y `test-summary.json`); a continuación se invoca el flujo reutilizable
-[`sonarqube.yml`](.github/workflows/sonarqube.yml), que descarga esos informes, analiza exactamente la revisión
-validada —la fusión del *pull request* o el `push` a `main`— con `fetch-depth: 0` y registra esa revisión en el
-análisis (`sonar.scm.revision`). Como el flujo del *pull request* solo ejecuta código de las ramas del propio
-repositorio, las credenciales nunca se exponen a código de terceros.
+trabajo `Quality gates` ejecuta cuatro de las cinco puertas locales (todas salvo `pre-commit`) y publica el
+artefacto `test-report` (`coverage.xml`, `junit.xml` y `test-summary.json`); a continuación se invoca el flujo
+reutilizable [`sonarqube.yml`](.github/workflows/sonarqube.yml), que descarga esos informes, analiza exactamente
+la revisión validada —la fusión del *pull request* o el `push` a `main`— con `fetch-depth: 0` y registra esa
+revisión en el análisis (`sonar.scm.revision`). Como el flujo del *pull request* solo ejecuta código de las
+ramas del propio repositorio, las credenciales nunca se exponen a código de terceros.
 
 El servidor SonarQube vive en la red Tailscale del equipo, así que el flujo se une a ella con
 `tailscale/github-action` creando un nodo efímero etiquetado `tag:ci` (se elimina al terminar el trabajo). En
@@ -412,7 +417,7 @@ aprobatoria.
 | Bloque del taller | Implementación |
 |---|---|
 | Repositorio y despliegue *plug-and-play* | `pyproject.toml` + `uv.lock` (instalación con `uv sync`), README, `.gitignore`, CI. |
-| Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
+| Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, Alpha Vantage opcional, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
 | Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados y correlaciones, calculadas en `plots_report`). |
 | Motor Monte Carlo | `Portfolio.simulate_monte_carlo()` y `PriceSeries.simulate_monte_carlo()` con `MonteCarloParameters`; `plot_simulation()`. |
 | Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; sección de validación de entradas en este README. |
