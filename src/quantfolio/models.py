@@ -185,11 +185,16 @@ class PriceSeries:
 
     @staticmethod
     def plot_simulation(simulations: pd.DataFrame, *, max_paths: int = 100) -> None:
-        """Display simulated trajectories and the distribution of final values.
+        """Display simulated trajectories and the distribution of final prices.
 
         Args:
             simulations: Path matrix returned by :meth:`simulate_monte_carlo`.
             max_paths: Maximum number of trajectories to draw.
 
         """
-        plot_simulation_paths(simulations, max_paths=max_paths, value_label="Precio")
+        plot_simulation_paths(
+            simulations,
+            max_paths=max_paths,
+            value_label="Precio",
+            final_label="precio final",
+        )

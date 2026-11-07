@@ -422,6 +422,7 @@ def plot_simulation_paths(
     *,
     max_paths: int = 100,
     value_label: str = "Valor de la cartera",
+    final_label: str = "valor final",
 ) -> None:
     """Display simulated trajectories and the distribution of final values.
 
@@ -429,6 +430,8 @@ def plot_simulation_paths(
         simulations: Path matrix returned by a ``simulate_monte_carlo`` method.
         max_paths: Maximum number of trajectories to draw.
         value_label: Label of the trajectory axis, which names the simulated quantity.
+        final_label: Label of the final-value axis and of the distribution title, which names
+            the simulated quantity at the end of the horizon.
 
     Raises:
         ValueError: If there are no simulations or ``max_paths`` is not positive.
@@ -453,8 +456,8 @@ def plot_simulation_paths(
     final_values = simulations.iloc[-1]
     distribution_axis.hist(final_values, bins=40)
     distribution_axis.axvline(final_values.median(), linestyle="--", label="Mediana")
-    distribution_axis.set_title("Distribución del valor final")
-    distribution_axis.set_xlabel("Valor final")
+    distribution_axis.set_title(f"Distribución del {final_label}")
+    distribution_axis.set_xlabel(final_label.capitalize())
     distribution_axis.set_ylabel("Número de escenarios")
     distribution_axis.legend()
 

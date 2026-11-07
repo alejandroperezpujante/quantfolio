@@ -159,6 +159,9 @@ def test_plot_simulation_paths_defaults_to_the_portfolio_label(
     plot_simulation_paths(simulations, max_paths=1)
 
     assert plt.gcf().axes[0].get_ylabel() == "Valor de la cartera"
+    distribution_axis = plt.gcf().axes[1]
+    assert distribution_axis.get_title() == "Distribución del valor final"
+    assert distribution_axis.get_xlabel() == "Valor final"
 
 
 def test_plot_simulation_paths_rejects_empty_frames() -> None:
@@ -205,3 +208,18 @@ def test_series_simulation_uses_the_price_label(
     asset.plot_simulation(simulations, max_paths=1)
 
     assert plt.gcf().axes[0].get_ylabel() == "Precio"
+
+
+def test_series_simulation_labels_the_distribution_as_final_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single-asset distribution panel speaks of prices, not portfolio values."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+    asset = make_series("AAA", [10.0, 11.0, 12.0, 13.0])
+    simulations = asset.simulate_monte_carlo(MonteCarloParameters(n_paths=2, horizon=5, seed=1))
+
+    asset.plot_simulation(simulations, max_paths=1)
+
+    distribution_axis = plt.gcf().axes[1]
+    assert distribution_axis.get_title() == "Distribución del precio final"
+    assert distribution_axis.get_xlabel() == "Precio final"
