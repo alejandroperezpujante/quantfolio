@@ -239,7 +239,8 @@ algunos mercados) — una limitación consciente y documentada en lugar de un co
 
 Los validadores compartidos viven en `quantfolio.validation`: la cartera, la serie de precios, el motor de
 simulación y las medidas de riesgo los importan desde un único módulo, de modo que la misma entrada inválida
-produce siempre el mismo mensaje en español.
+produce el mismo mensaje en español. Los chequeos con contexto propio (por ejemplo, los dos retornos que
+necesita la estimación de los supuestos de Monte Carlo) conservan su mensaje específico.
 
 ## Simulación de Monte Carlo
 

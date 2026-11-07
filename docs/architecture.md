@@ -109,7 +109,7 @@ classDiagram
         <<module>>
         +render_portfolio_report(portfolio, ...) str
         +plot_portfolio_report(portfolio) None
-        +plot_simulation_paths(simulations, max_paths) None
+        +plot_simulation_paths(simulations, max_paths, value_label, final_label) None
     }
 
     Portfolio o-- "1..*" PriceSeries : agrega
