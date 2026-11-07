@@ -25,6 +25,7 @@ from quantfolio.simulation import (
     paths_to_frame,
     simulate_gbm_paths,
 )
+from quantfolio.validation import validate_periods_per_year, validate_returns
 
 if TYPE_CHECKING:
     from quantfolio.models import PriceSeries
@@ -188,13 +189,9 @@ class Portfolio:
                 return observations.
 
         """
-        if periods_per_year < 1:
-            msg = "periods_per_year debe ser al menos uno."
-            raise ValueError(msg)
+        validate_periods_per_year(periods_per_year)
         returns = self.portfolio_returns()
-        if len(returns) < MIN_OBSERVATIONS:
-            msg = "Se necesitan al menos dos observaciones de rentabilidad."
-            raise ValueError(msg)
+        validate_returns(returns)
         mean_daily = float(returns.mean())
         std_daily = float(returns.std(ddof=1))
         return {
@@ -267,9 +264,7 @@ class Portfolio:
         """
         settings = parameters if parameters is not None else MonteCarloParameters()
         returns = self.portfolio_returns()
-        if len(returns) < MIN_OBSERVATIONS:
-            msg = "Se necesitan al menos dos observaciones de rentabilidad."
-            raise ValueError(msg)
+        validate_returns(returns)
         annual_return, annual_volatility = annualized_log_assumptions(
             returns,
             periods_per_year=settings.periods_per_year,
@@ -327,8 +322,8 @@ class Portfolio:
 
         Raises:
             ValueError: If ``periods_per_year`` is not positive, ``confidence`` is not
-                strictly between zero and one, or the assets share fewer than two dates
-                (disjoint calendars).
+                strictly between zero and one, ``risk_free_rate`` is not finite, or the
+                assets share fewer than two dates (disjoint calendars).
 
         """
         return render_portfolio_report(

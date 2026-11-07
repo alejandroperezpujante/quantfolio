@@ -17,6 +17,11 @@ from quantfolio.constants import (
 )
 from quantfolio.risk import compound_annual_growth, drift_standard_error
 from quantfolio.simulation import annualized_log_assumptions
+from quantfolio.validation import (
+    validate_confidence,
+    validate_periods_per_year,
+    validate_risk_free_rate,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -55,16 +60,13 @@ def render_portfolio_report(
         Markdown text with composition, metrics, diagnostics and risk warnings.
 
     Raises:
-        ValueError: If ``periods_per_year`` is not positive or ``confidence`` is not strictly
-            between zero and one.
+        ValueError: If ``periods_per_year`` is not positive, ``confidence`` is not strictly
+            between zero and one, or ``risk_free_rate`` is not finite.
 
     """
-    if periods_per_year < 1:
-        msg = "periods_per_year debe ser al menos uno."
-        raise ValueError(msg)
-    if not 0.0 < confidence < 1.0:
-        msg = "confidence debe estar entre 0 y 1."
-        raise ValueError(msg)
+    validate_periods_per_year(periods_per_year)
+    validate_confidence(confidence)
+    validate_risk_free_rate(risk_free_rate)
     returns = portfolio.portfolio_returns()
     quality = portfolio.alignment_summary()
     metrics: dict[str, float] | None = None

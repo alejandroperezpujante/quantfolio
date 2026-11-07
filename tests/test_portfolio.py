@@ -572,6 +572,15 @@ def test_report_rejects_invalid_confidence() -> None:
         portfolio.report(confidence=1.5)
 
 
+@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf")])
+def test_report_rejects_non_finite_risk_free_rate(risk_free_rate: float) -> None:
+    """A non-finite rate would render as nan or inf in the Sharpe row."""
+    portfolio = build_portfolio()
+
+    with pytest.raises(ValueError, match="finito"):
+        portfolio.report(risk_free_rate=risk_free_rate)
+
+
 def test_report_degrades_when_the_metrics_overflow() -> None:
     """Absurd but finite returns overflow the log drift; the report still renders."""
     prices = [1.0, 300.0, 301.0]
