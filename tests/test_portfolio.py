@@ -383,6 +383,7 @@ def test_report_forwards_the_risk_parameters() -> None:
     )
 
     assert f"| Ratio de Sharpe (rf=2.00%) | {sharpe:.2f} |" in report
+    assert f"| Máxima caída histórica | {portfolio.max_drawdown():.2%} |" in report
     assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in report
     assert f"| CVaR histórico diario (90%) | {conditional_value_at_risk:.2%} |" in report
     assert f"| Ratio de Sharpe (rf=2.00%) | {monthly_sharpe:.2f} |" in monthly_report

@@ -15,7 +15,16 @@ from quantfolio.constants import (
     SHORT_HISTORY_WARNING_THRESHOLD,
     TRADING_DAYS_PER_YEAR,
 )
-from quantfolio.risk import compound_annual_growth, drift_standard_error
+from quantfolio.risk import (
+    compound_annual_growth,
+    drift_standard_error,
+    historical_cvar,
+    historical_var,
+    sharpe_ratio,
+)
+from quantfolio.risk import (
+    max_drawdown as max_drawdown_of_returns,
+)
 from quantfolio.simulation import annualized_log_assumptions
 from quantfolio.validation import (
     validate_confidence,
@@ -75,14 +84,14 @@ def render_portfolio_report(
     metrics_lines: list[str] | None = None
     try:
         metrics = portfolio.summary(periods_per_year=periods_per_year)
-        max_drawdown = portfolio.max_drawdown()
+        max_drawdown = max_drawdown_of_returns(returns)
         metrics_lines = _render_metrics_section(
-            portfolio,
             metrics=metrics,
             returns=returns,
             periods_per_year=periods_per_year,
             risk_free_rate=risk_free_rate,
             confidence=confidence,
+            max_drawdown=max_drawdown,
         )
     except ValueError:
         metrics = None
@@ -190,35 +199,35 @@ def _render_quality_section(
 
 
 def _render_metrics_section(
-    portfolio: Portfolio,
     *,
     metrics: dict[str, float],
     returns: pd.Series[float],
     periods_per_year: int,
     risk_free_rate: float,
     confidence: float,
+    max_drawdown: float,
 ) -> list[str]:
     """Render the historical metrics table and its explanatory notes.
 
     Args:
-        portfolio: Portfolio being reported, which supplies the risk measures.
         metrics: Statistics returned by ``Portfolio.summary``.
-        returns: Portfolio returns used to annualize the drift and the growth measures.
+        returns: Aligned portfolio returns, already held by the report.
         periods_per_year: Number of trading periods per year used to annualize.
         risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
         confidence: Confidence level of the value-at-risk measures.
+        max_drawdown: Maximum drawdown already computed from ``returns``.
 
     Returns:
         Markdown lines of the metrics section, table and notes included.
 
     """
-    max_drawdown = portfolio.max_drawdown()
-    sharpe = portfolio.sharpe_ratio(
+    sharpe = sharpe_ratio(
+        returns,
         risk_free_rate=risk_free_rate,
         periods_per_year=periods_per_year,
     )
-    value_at_risk = portfolio.value_at_risk(confidence=confidence)
-    conditional_value_at_risk = portfolio.conditional_value_at_risk(confidence=confidence)
+    value_at_risk = historical_var(returns, confidence=confidence)
+    conditional_value_at_risk = historical_cvar(returns, confidence=confidence)
     standard_error = drift_standard_error(returns, periods_per_year=periods_per_year)
     point_estimate = metrics["annualized_return_approx"]
     lower = point_estimate - 1.96 * standard_error

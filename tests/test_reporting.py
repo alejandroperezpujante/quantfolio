@@ -34,6 +34,36 @@ def _build_portfolio() -> Portfolio:
     )
 
 
+def test_report_aligns_the_returns_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The report computes the aligned returns once for the series and once inside summary."""
+    calls: list[int] = []
+    original = Portfolio.portfolio_returns
+
+    def counting(self: Portfolio) -> pd.Series[float]:
+        calls.append(1)
+        return original(self)
+
+    monkeypatch.setattr(Portfolio, "portfolio_returns", counting)
+
+    _build_portfolio().report()
+
+    assert len(calls) == 2
+
+
+def test_report_does_not_recompute_the_drawdown_through_the_portfolio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The drawdown is computed once from the aligned returns, not through the portfolio."""
+
+    def forbidden(_self: Portfolio) -> float:
+        msg = "the report must reuse the aligned returns"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(Portfolio, "max_drawdown", forbidden)
+
+    _build_portfolio().report()
+
+
 def test_plot_portfolio_report_runs_headless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
