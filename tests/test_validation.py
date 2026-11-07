@@ -63,15 +63,19 @@ def test_validate_returns_accepts_a_valid_series() -> None:
 
 def test_validate_returns_rejects_a_single_observation() -> None:
     """Dispersion statistics need at least two returns."""
+    returns = returns_of([0.01])
+
     with pytest.raises(ValueError, match="dos observaciones de rentabilidad"):
-        validate_returns(returns_of([0.01]))
+        validate_returns(returns)
 
 
 @pytest.mark.parametrize("values", [[float("nan"), 0.01], [0.01, -1.0]])
 def test_validate_returns_rejects_invalid_returns(values: list[float]) -> None:
     """Non-finite returns and total losses are rejected."""
+    returns = returns_of(values)
+
     with pytest.raises(ValueError, match="finitas y mayores que -100 %"):
-        validate_returns(returns_of(values))
+        validate_returns(returns)
 
 
 def test_validate_finite_returns_skips_the_sample_length_check() -> None:
@@ -82,5 +86,7 @@ def test_validate_finite_returns_skips_the_sample_length_check() -> None:
 @pytest.mark.parametrize("values", [[float("inf"), 0.01], [0.01, -1.5]])
 def test_validate_finite_returns_rejects_invalid_returns(values: list[float]) -> None:
     """The finiteness branch shares the validate_returns message."""
+    returns = returns_of(values)
+
     with pytest.raises(ValueError, match="finitas y mayores que -100 %"):
-        validate_finite_returns(returns_of(values))
+        validate_finite_returns(returns)
