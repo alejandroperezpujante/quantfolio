@@ -387,7 +387,7 @@ def test_report_forwards_the_risk_parameters() -> None:
     assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in report
     assert f"| CVaR histórico diario (90%) | {conditional_value_at_risk:.2%} |" in report
     assert f"| Ratio de Sharpe (rf=2.00%) | {monthly_sharpe:.2f} |" in monthly_report
-    assert f"| VaR histórico diario (90%) | {value_at_risk:.2%} |" in monthly_report
+    assert f"| VaR histórico mensual (90%) | {value_at_risk:.2%} |" in monthly_report
 
 
 def test_report_explains_the_tail_measure_sign_convention() -> None:

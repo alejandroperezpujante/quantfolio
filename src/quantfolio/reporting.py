@@ -37,6 +37,29 @@ if TYPE_CHECKING:
 
     from quantfolio.portfolio import Portfolio
 
+#: Human-readable name of the return period implied by periods_per_year.
+_PERIOD_LABELS: dict[int, str] = {
+    252: "diario",
+    365: "diario",
+    52: "semanal",
+    12: "mensual",
+    4: "trimestral",
+    1: "anual",
+}
+
+
+def _period_label(periods_per_year: int) -> str:
+    """Return the human-readable name of a return period.
+
+    Args:
+        periods_per_year: Number of return periods in a year.
+
+    Returns:
+        Name of the period, or "por periodo" when the factor has no common name.
+
+    """
+    return _PERIOD_LABELS.get(periods_per_year, "por periodo")
+
 
 def render_portfolio_report(
     portfolio: Portfolio,
@@ -59,7 +82,9 @@ def render_portfolio_report(
         portfolio: Portfolio to report on.
         periods_per_year: Number of trading periods per year used to annualize the mean return,
             the volatility and the Sharpe ratio; the VaR and the CVaR are expressed per return
-            period (daily in the examples).
+            period and their label follows this factor (252 or 365 read "diario", 52 "semanal",
+            12 "mensual", 4 "trimestral", 1 "anual", anything else "por periodo"). It must match
+            the sampling frequency of the price data.
         include_quality: Whether to include the data-quality diagnostics section.
         include_warnings: Whether to include the risk-warnings section.
         risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
@@ -228,6 +253,7 @@ def _render_metrics_section(
     )
     value_at_risk = historical_var(returns, confidence=confidence)
     conditional_value_at_risk = historical_cvar(returns, confidence=confidence)
+    period_label = _period_label(periods_per_year)
     standard_error = drift_standard_error(returns, periods_per_year=periods_per_year)
     point_estimate = metrics["annualized_return_approx"]
     lower = point_estimate - 1.96 * standard_error
@@ -252,8 +278,8 @@ def _render_metrics_section(
         f"| Crecimiento mediano implícito (exp(m)-1) | {median_growth:.2%} |",
         f"| Máxima caída histórica | {max_drawdown:.2%} |",
         f"| Ratio de Sharpe (rf={risk_free_rate:.2%}) | {sharpe:.2f} |",
-        f"| VaR histórico diario ({confidence:.0%}) | {value_at_risk:.2%} |",
-        f"| CVaR histórico diario ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
+        f"| VaR histórico {period_label} ({confidence:.0%}) | {value_at_risk:.2%} |",
+        f"| CVaR histórico {period_label} ({confidence:.0%}) | {conditional_value_at_risk:.2%} |",
         "",
         "_Un VaR o CVaR negativo indica que el cuantil de la cola es una ganancia._",
         "",

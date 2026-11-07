@@ -232,11 +232,11 @@ class Portfolio:
         )
 
     def value_at_risk(self, *, confidence: float = 0.95) -> float:
-        """Return the historical daily VaR at the requested confidence."""
+        """Return the historical VaR of a portfolio return period at the confidence."""
         return historical_var(self.portfolio_returns(), confidence=confidence)
 
     def conditional_value_at_risk(self, *, confidence: float = 0.95) -> float:
-        """Return the historical daily CVaR at the requested confidence."""
+        """Return the historical CVaR of a portfolio return period at the confidence."""
         return historical_cvar(self.portfolio_returns(), confidence=confidence)
 
     def simulate_monte_carlo(
@@ -311,7 +311,9 @@ class Portfolio:
         Args:
             periods_per_year: Number of trading periods per year used to annualize the mean
                 return, the volatility and the Sharpe ratio; the VaR and the CVaR are expressed
-                per return period (daily in the examples).
+                per return period and their label follows this factor (252 or 365 read "diario",
+                52 "semanal", 12 "mensual", 4 "trimestral", 1 "anual", anything else
+                "por periodo"). It must match the sampling frequency of the price data.
             include_quality: Whether to include the data-quality diagnostics section.
             include_warnings: Whether to include the risk-warnings section.
             risk_free_rate: Annual risk-free rate used by the Sharpe ratio.

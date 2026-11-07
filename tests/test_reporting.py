@@ -64,6 +64,26 @@ def test_report_does_not_recompute_the_drawdown_through_the_portfolio(
     _build_portfolio().report()
 
 
+@pytest.mark.parametrize(
+    ("periods_per_year", "label"),
+    [
+        (252, "diario"),
+        (365, "diario"),
+        (52, "semanal"),
+        (12, "mensual"),
+        (4, "trimestral"),
+        (1, "anual"),
+        (6, "por periodo"),
+    ],
+)
+def test_report_labels_the_var_period(periods_per_year: int, label: str) -> None:
+    """The VaR row names the return period instead of hardcoding 'diario'."""
+    report = _build_portfolio().report(periods_per_year=periods_per_year, confidence=0.9)
+
+    assert f"VaR histórico {label} (90%)" in report
+    assert f"CVaR histórico {label} (90%)" in report
+
+
 def test_plot_portfolio_report_runs_headless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
