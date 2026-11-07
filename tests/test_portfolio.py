@@ -349,12 +349,13 @@ def test_portfolio_risk_metrics_match_manual() -> None:
     )
 
 
-def test_sharpe_ratio_rejects_non_finite_risk_free_rate() -> None:
+@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf"), float("-inf")])
+def test_sharpe_ratio_rejects_non_finite_risk_free_rate(risk_free_rate: float) -> None:
     """The portfolio entry point inherits the finiteness validation."""
     portfolio = build_portfolio()
 
     with pytest.raises(ValueError, match="finito"):
-        portfolio.sharpe_ratio(risk_free_rate=float("nan"))
+        portfolio.sharpe_ratio(risk_free_rate=risk_free_rate)
 
 
 def test_report_includes_risk_metrics() -> None:
@@ -573,7 +574,7 @@ def test_report_rejects_invalid_confidence() -> None:
         portfolio.report(confidence=1.5)
 
 
-@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf")])
+@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf"), float("-inf")])
 def test_report_rejects_non_finite_risk_free_rate(risk_free_rate: float) -> None:
     """A non-finite rate would render as nan or inf in the Sharpe row."""
     portfolio = build_portfolio()

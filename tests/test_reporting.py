@@ -9,6 +9,7 @@ import pytest
 
 from quantfolio.portfolio import Portfolio
 from quantfolio.reporting import plot_portfolio_report, plot_simulation_paths
+from quantfolio.risk import max_drawdown
 from quantfolio.simulation import MonteCarloParameters
 from tests.helpers import make_series
 
@@ -62,6 +63,21 @@ def test_report_does_not_recompute_the_drawdown_through_the_portfolio(
     monkeypatch.setattr(Portfolio, "max_drawdown", forbidden)
 
     _build_portfolio().report()
+
+
+def test_report_computes_the_drawdown_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The report derives the drawdown once from the aligned returns."""
+    calls: list[int] = []
+
+    def counting(returns: pd.Series[float]) -> float:
+        calls.append(1)
+        return max_drawdown(returns)
+
+    monkeypatch.setattr("quantfolio.reporting.max_drawdown_of_returns", counting)
+
+    _build_portfolio().report()
+
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize(
