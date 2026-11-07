@@ -349,6 +349,14 @@ def test_portfolio_risk_metrics_match_manual() -> None:
     )
 
 
+def test_sharpe_ratio_rejects_non_finite_risk_free_rate() -> None:
+    """The portfolio entry point inherits the finiteness validation."""
+    portfolio = build_portfolio()
+
+    with pytest.raises(ValueError, match="finito"):
+        portfolio.sharpe_ratio(risk_free_rate=float("nan"))
+
+
 def test_report_includes_risk_metrics() -> None:
     """The Markdown report shows drawdown, Sharpe, VaR and CVaR."""
     report = build_portfolio().report()

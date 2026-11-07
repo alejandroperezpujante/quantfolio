@@ -224,8 +224,8 @@ class Portfolio:
             Annualized mean excess return divided by the annualized volatility.
 
         Raises:
-            ValueError: If ``periods_per_year`` is not positive or there are fewer than two
-                return observations.
+            ValueError: If ``periods_per_year`` is not positive, ``risk_free_rate`` is not
+                finite, or there are fewer than two return observations.
 
         """
         return sharpe_ratio_of_returns(

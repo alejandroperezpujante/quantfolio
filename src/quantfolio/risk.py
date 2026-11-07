@@ -8,9 +8,13 @@ the portfolio report, the notebooks and any future backtest.
 import math
 from typing import TYPE_CHECKING, cast
 
-import numpy as np
-
-from quantfolio.constants import MIN_OBSERVATIONS, TRADING_DAYS_PER_YEAR
+from quantfolio.constants import TRADING_DAYS_PER_YEAR
+from quantfolio.validation import (
+    validate_confidence,
+    validate_periods_per_year,
+    validate_returns,
+    validate_risk_free_rate,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -19,56 +23,6 @@ if TYPE_CHECKING:
 #: standard deviation of a constant series is not exactly zero in floating point, so an
 #: absolute tolerance is required to recognize a constant path as having no risk.
 _ZERO_VOLATILITY_TOLERANCE = 1e-12
-
-
-def _validate_returns(returns: pd.Series[float]) -> None:
-    """Check that a return series can be aggregated.
-
-    Args:
-        returns: Simple period returns.
-
-    Raises:
-        ValueError: If there are fewer than two observations or a return is not finite or is
-            less than or equal to a total loss (-100 %).
-
-    """
-    if len(returns) < MIN_OBSERVATIONS:
-        msg = "Se necesitan al menos dos rentabilidades."
-        raise ValueError(msg)
-    values = returns.to_numpy()
-    if not np.all(np.isfinite(values)) or np.any(values <= -1.0):
-        msg = "Las rentabilidades deben ser finitas y mayores que -100 %."
-        raise ValueError(msg)
-
-
-def _validate_confidence(confidence: float) -> None:
-    """Check that a tail probability is a valid confidence level.
-
-    Args:
-        confidence: Confidence level of the risk measure.
-
-    Raises:
-        ValueError: If ``confidence`` is not strictly between zero and one.
-
-    """
-    if not 0.0 < confidence < 1.0:
-        msg = "confidence debe estar entre 0 y 1."
-        raise ValueError(msg)
-
-
-def _validate_periods_per_year(periods_per_year: int) -> None:
-    """Check that the annualization factor is positive.
-
-    Args:
-        periods_per_year: Number of periods in a year.
-
-    Raises:
-        ValueError: If ``periods_per_year`` is lower than one.
-
-    """
-    if periods_per_year < 1:
-        msg = "periods_per_year debe ser al menos uno."
-        raise ValueError(msg)
 
 
 def drawdown_series(returns: pd.Series[float]) -> pd.Series[float]:
@@ -87,7 +41,7 @@ def drawdown_series(returns: pd.Series[float]) -> pd.Series[float]:
         ValueError: If the series has fewer than two observations or an invalid return.
 
     """
-    _validate_returns(returns)
+    validate_returns(returns)
     wealth = (1.0 + returns).cumprod()
     drawdowns = wealth / wealth.cummax() - 1.0
     drawdowns.name = "drawdown"
@@ -128,8 +82,8 @@ def compound_annual_growth(
         ValueError: If ``periods_per_year`` is lower than one or the series is invalid.
 
     """
-    _validate_periods_per_year(periods_per_year)
-    _validate_returns(returns)
+    validate_periods_per_year(periods_per_year)
+    validate_returns(returns)
     growth = cast("float", (1.0 + returns).prod())
     return float(growth ** (periods_per_year / len(returns))) - 1.0
 
@@ -152,11 +106,13 @@ def sharpe_ratio(
         the volatility is numerically zero.
 
     Raises:
-        ValueError: If ``periods_per_year`` is lower than one or the series is invalid.
+        ValueError: If ``periods_per_year`` is lower than one, ``risk_free_rate`` is not
+            finite, or the series is invalid.
 
     """
-    _validate_periods_per_year(periods_per_year)
-    _validate_returns(returns)
+    validate_periods_per_year(periods_per_year)
+    validate_risk_free_rate(risk_free_rate)
+    validate_returns(returns)
     period_risk_free = risk_free_rate / periods_per_year
     annual_excess = float((returns - period_risk_free).mean()) * periods_per_year
     annual_volatility = float(returns.std(ddof=1)) * math.sqrt(periods_per_year)
@@ -183,8 +139,8 @@ def drift_standard_error(
         ValueError: If ``periods_per_year`` is lower than one or the series is invalid.
 
     """
-    _validate_periods_per_year(periods_per_year)
-    _validate_returns(returns)
+    validate_periods_per_year(periods_per_year)
+    validate_returns(returns)
     annual_volatility = float(returns.std(ddof=1)) * math.sqrt(periods_per_year)
     years = len(returns) / periods_per_year
     return annual_volatility / math.sqrt(years)
@@ -205,8 +161,8 @@ def historical_var(returns: pd.Series[float], *, confidence: float = 0.95) -> fl
             invalid.
 
     """
-    _validate_confidence(confidence)
-    _validate_returns(returns)
+    validate_confidence(confidence)
+    validate_returns(returns)
     return -float(returns.quantile(1.0 - confidence))
 
 
@@ -225,8 +181,8 @@ def historical_cvar(returns: pd.Series[float], *, confidence: float = 0.95) -> f
             invalid.
 
     """
-    _validate_confidence(confidence)
-    _validate_returns(returns)
+    validate_confidence(confidence)
+    validate_returns(returns)
     threshold = returns.quantile(1.0 - confidence)
     tail = returns[returns <= threshold]
     return -float(tail.mean())

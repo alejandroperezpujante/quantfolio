@@ -81,7 +81,7 @@ def test_risk_measures_require_two_returns() -> None:
     """A single return cannot describe a distribution."""
     returns = pd.Series([0.01])
 
-    with pytest.raises(ValueError, match="dos rentabilidades"):
+    with pytest.raises(ValueError, match="dos observaciones"):
         max_drawdown(returns)
 
 
@@ -107,6 +107,15 @@ def test_sharpe_ratio_subtracts_the_risk_free_rate() -> None:
     )
 
     assert sharpe_ratio(returns, risk_free_rate=0.02) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("risk_free_rate", [float("nan"), float("inf"), float("-inf")])
+def test_sharpe_ratio_rejects_non_finite_risk_free_rates(risk_free_rate: float) -> None:
+    """A non-finite rate cannot annualize an excess return."""
+    returns = pd.Series([0.01, 0.02, -0.01], dtype=float)
+
+    with pytest.raises(ValueError, match="risk_free_rate debe ser un número finito"):
+        sharpe_ratio(returns, risk_free_rate=risk_free_rate)
 
 
 def test_compound_annual_growth_rejects_invalid_periods_per_year() -> None:
@@ -146,5 +155,5 @@ def test_historical_cvar_requires_two_returns() -> None:
     """The CVaR validates the sample before looking at the tail."""
     returns = pd.Series([0.01])
 
-    with pytest.raises(ValueError, match="dos rentabilidades"):
+    with pytest.raises(ValueError, match="dos observaciones"):
         historical_cvar(returns, confidence=0.95)
