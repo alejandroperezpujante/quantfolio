@@ -6,7 +6,7 @@
   "workspaceFolder": "/workspaces/quantfolio",
   "initializeCommand": "sh .devcontainer/initialize.sh",
   "shutdownAction": "stopCompose",
-  "remoteUser": "vscode",
+  "remoteUser": "developer",
   "forwardPorts": ["sonarqube:9000"],
   "portsAttributes": {
     "sonarqube:9000": {
@@ -25,13 +25,13 @@
         "SonarSource.sonarlint-vscode"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/home/vscode/quantfolio-venv/bin/python",
+        "python.defaultInterpreterPath": "/home/developer/quantfolio-venv/bin/python",
         "python.testing.pytestEnabled": true,
         "python.testing.pytestArgs": ["tests"],
         "python.testing.unittestEnabled": false,
         "mypy-type-checker.args": [
           "--python-executable",
-          "/home/vscode/quantfolio-venv/bin/python"
+          "/home/developer/quantfolio-venv/bin/python"
         ],
         "sonarlint.connectedMode.project": {
           "connectionId": "quantfolio-local",
