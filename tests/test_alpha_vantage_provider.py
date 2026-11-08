@@ -951,3 +951,14 @@ def test_get_many_routes_each_ticker_family(monkeypatch: pytest.MonkeyPatch) -> 
     assert result["INDEX:SPX"].ticker == "INDEX:SPX"
     assert result["FX:EUR/USD"].ticker == "FX:EUR/USD"
     assert [call["function"] for call in stub.calls] == ["INDEX_DATA", "FX_DAILY"]
+
+
+def test_fx_provider_marks_its_explicit_quote_currency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider pair carries its explicitly defined quote currency into PriceSeries."""
+    install_client(monkeypatch, [fx_payload(pd.Timestamp("2025-01-02"), 2)])
+
+    asset = premium_source().get_prices("FX:EUR/USD", "2025-01-02")
+
+    assert asset.quote_currency == "USD"

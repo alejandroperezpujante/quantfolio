@@ -377,7 +377,13 @@ class AlphaVantageSource(PriceSource):
                 "para las fechas solicitadas."
             )
             raise ValueError(msg)
-        return PriceSeries(ticker=symbol, prices=window, source=route.provenance)
+        quote_currency = route.parameters["to_symbol"] if route.family is _Family.FX else None
+        return PriceSeries(
+            ticker=symbol,
+            prices=window,
+            source=route.provenance,
+            quote_currency=quote_currency,
+        )
 
     def _route(self, symbol: str) -> _Route:
         """Return the request and parsing specification of one ticker.

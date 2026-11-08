@@ -223,3 +223,90 @@ def test_price_series_summary_rejects_non_positive_periods_per_year() -> None:
 
     with pytest.raises(ValueError, match="periods_per_year"):
         asset.summary(periods_per_year=0)
+
+
+@pytest.mark.parametrize(
+    ("unit", "currency"),
+    [("GBX", "GBP"), ("GBp", "GBP"), ("ILA", "ILS"), ("ZAc", "ZAR")],
+)
+def test_price_series_normalizes_supported_quote_units(unit: str, currency: str) -> None:
+    """Supported minor units are normalized to their canonical currency at one percent."""
+    asset = PriceSeries(
+        ticker="TEST",
+        prices=make_prices([120.0, 125.0]),
+        quote_unit=unit,
+    )
+
+    assert asset.quote_currency == currency
+    assert asset.quote_unit == unit
+    assert list(asset.prices) == pytest.approx([1.2, 1.25])
+
+
+def test_price_series_normalizes_currency_code_without_ticker_inference() -> None:
+    """Currency metadata is explicit, canonicalized and never inferred from the ticker."""
+    explicit = PriceSeries(
+        ticker="AAPL",
+        prices=make_prices([10.0, 11.0]),
+        quote_currency=" usd ",
+    )
+    unknown = make_series("USD", [10.0, 11.0])
+
+    assert explicit.quote_currency == "USD"
+    assert explicit.quote_unit is None
+    assert unknown.quote_currency is None
+
+
+@pytest.mark.parametrize(
+    ("quote_currency", "quote_unit", "message"),
+    [("US", None, "divisa"), ("USD", "GBX", "no coincide")],
+)
+def test_price_series_rejects_invalid_currency_metadata(
+    quote_currency: str,
+    quote_unit: str | None,
+    message: str,
+) -> None:
+    """Malformed or inconsistent quote metadata is rejected in Spanish."""
+    prices = make_prices([10.0, 11.0])
+    with pytest.raises(ValueError, match=message):
+        PriceSeries(
+            ticker="TEST",
+            prices=prices,
+            quote_currency=quote_currency,
+            quote_unit=quote_unit,
+        )
+
+
+@pytest.mark.parametrize("quote_unit", ["", "US"])
+def test_price_series_rejects_invalid_quote_units(quote_unit: str) -> None:
+    """Empty or malformed quote units are rejected in Spanish."""
+    prices = make_prices([10.0, 11.0])
+    with pytest.raises(ValueError, match="unidad"):
+        PriceSeries(
+            ticker="TEST",
+            prices=prices,
+            quote_unit=quote_unit,
+        )
+
+
+def test_price_series_rejects_non_text_quote_unit() -> None:
+    """A quote unit must be text."""
+    prices = make_prices([10.0, 11.0])
+    invalid_unit = cast("str", 5)
+    with pytest.raises(ValueError, match="unidad"):
+        PriceSeries(
+            ticker="TEST",
+            prices=prices,
+            quote_unit=invalid_unit,
+        )
+
+
+def test_price_series_rejects_non_text_currency_metadata() -> None:
+    """Currency metadata must be a text code, not merely expose string-like methods."""
+    prices = make_prices([10.0, 11.0])
+    invalid_currency = cast("str", 5)
+    with pytest.raises(TypeError, match="divisa"):
+        PriceSeries(
+            ticker="TEST",
+            prices=prices,
+            quote_currency=invalid_currency,
+        )

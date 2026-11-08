@@ -673,3 +673,55 @@ def test_cache_reuses_files_for_na_like_tickers(tmp_path: Path, ticker: str) -> 
 
     assert upstream.calls == 1
     assert second.ticker == ticker
+
+
+def test_cache_round_trips_currency_and_quote_unit_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Normalized prices and their original quote unit survive a cache round trip."""
+    upstream = StubSource(TRADING_DATES)
+    original_get_prices = upstream.get_prices
+
+    def get_prices_with_metadata(
+        ticker: str,
+        start: DateLike,
+        end: DateLike | None = None,
+    ) -> PriceSeries:
+        base = original_get_prices(ticker, start, end)
+        return PriceSeries(
+            ticker=ticker,
+            prices=base.prices * 100.0,
+            source=base.source,
+            quote_currency="GBP",
+            quote_unit="GBX",
+        )
+
+    monkeypatch.setattr(upstream, "get_prices", get_prices_with_metadata)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+    first = cached.get_prices("AAA", "2025-01-02", "2025-02-27")
+    second = cached.get_prices("AAA", "2025-01-02", "2025-02-27")
+
+    assert second.quote_currency == "GBP"
+    assert second.quote_unit == "GBX"
+    assert second.source == "Stub (cache)"
+    pd.testing.assert_series_equal(first.prices, second.prices, check_freq=False)
+
+
+def test_legacy_cache_files_have_unknown_currency_metadata(
+    tmp_path: Path,
+) -> None:
+    """Cache rows written before currency metadata remain explicitly unknown."""
+    path = tmp_path / "stub" / "AAA.csv"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({"Date": TRADING_DATES[:5], "Close": [10.0, 11.0, 12.0, 13.0, 14.0]}).to_csv(
+        path, index=False
+    )
+    upstream = StubSource(TRADING_DATES)
+    cached = CachedPriceSource(upstream, cache_dir=tmp_path)
+
+    asset = cached.get_prices("AAA", "2025-01-02", "2025-01-08")
+
+    assert upstream.calls == 0
+    assert asset.quote_currency is None
+    assert asset.quote_unit is None

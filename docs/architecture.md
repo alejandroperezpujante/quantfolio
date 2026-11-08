@@ -15,6 +15,8 @@ classDiagram
         +str ticker
         +Series~float~ prices
         +str source
+        +str quote_currency
+        +str quote_unit
         +float mean_price
         +float std_price
         +summary(periods_per_year) dict
@@ -25,7 +27,11 @@ classDiagram
     class Portfolio {
         +dict~str, PriceSeries~ assets
         +dict~str, float~ weights
+        +str reporting_currency
+        +ExchangeRates exchange_rates
         +get_prices() DataFrame
+        +get_reporting_prices() DataFrame
+        +currency_conversion_diagnostics() DataFrame
         +get_returns() DataFrame
         +alignment_summary() dict
         +portfolio_returns() Series
@@ -39,6 +45,24 @@ classDiagram
         +plot_simulation(simulations, max_paths) None
         +report(periods_per_year, include_quality, include_warnings, risk_free_rate, confidence) str
         +plots_report() None
+    }
+
+    class ExchangeRates {
+        +tuple~PriceSeries~ rates
+        +int max_age_days = 4
+        +from_source(source, pairs, start, end) ExchangeRates
+        +resolve_rate(from_currency, to_currency, on_date) tuple
+    }
+
+    class ExchangeRateObservation {
+        +str pair
+        +str source
+        +str from_currency
+        +str to_currency
+        +Timestamp observation_date
+        +int age_days
+        +float rate
+        +bool inverted
     }
 
     class MonteCarloParameters {
@@ -65,6 +89,10 @@ classDiagram
 
     class KrakenSource {
         criptomonedas
+    }
+
+    class ECBExchangeRateSource {
+        pares EUR-first diarios
     }
 
     class AlphaVantageSource {
@@ -113,6 +141,9 @@ classDiagram
     }
 
     Portfolio o-- "1..*" PriceSeries : agrega
+    Portfolio o-- ExchangeRates : convierte a divisa de reporte
+    ExchangeRates ..> ExchangeRateObservation : registra
+    ExchangeRates o-- "0..*" PriceSeries : tipos históricos
     Portfolio ..> MonteCarloParameters : configura
     Portfolio ..> simulation : delega
     Portfolio ..> reporting : delega
@@ -120,6 +151,7 @@ classDiagram
     PriceSeries ..> reporting : delega
     YahooFinanceSource --|> PriceSource
     KrakenSource --|> PriceSource
+    ECBExchangeRateSource --|> PriceSource
     AlphaVantageSource --|> PriceSource
     CachedPriceSource --|> PriceSource
     CachedPriceSource o-- "1" PriceSource : envuelve
@@ -127,7 +159,7 @@ classDiagram
 ```
 
 **Lectura del diagrama.** `PriceSource` es el contrato común de la capa de ingesta: los proveedores concretos
-(Yahoo Finance, Kraken y Alpha Vantage) lo implementan y `CachedPriceSource` lo decora sobre cualquier otro proveedor, de forma
+(Yahoo Finance, Kraken, Alpha Vantage y ECB) lo implementan y `CachedPriceSource` lo decora sobre cualquier otro proveedor, de forma
 que la capa de análisis nunca depende de una API concreta. `PriceSeries` y `Portfolio` son las DataClasses del
 modelo; `MonteCarloParameters` concentra la parametrización del motor `simulation.py`, y `reporting.py` contiene
 los helpers de Markdown y gráficos que los métodos públicos delegan. `FredMacroSource`/`MacroSeries` cubren la
@@ -141,12 +173,13 @@ descarga falla con `ValueError` en lugar de etiquetar mal la serie.
 ```mermaid
 flowchart LR
     subgraph entrypoint["Punto de entrada (notebooks/)"]
-        NB["quantfolio_demo.ipynb<br/>portfolio_stocks.ipynb<br/>portfolio_indices.ipynb<br/>portfolio_fixed_income.ipynb<br/>portfolio_crypto.ipynb"]
+        NB["quantfolio_demo.ipynb<br/>portfolio_stocks.ipynb<br/>portfolio_indices.ipynb<br/>portfolio_fixed_income.ipynb<br/>portfolio_crypto.ipynb<br/>portfolio_multi_currency.ipynb"]
     end
 
     subgraph ingestion["Ingesta y estandarización (sources/, macro.py)"]
         YF["YahooFinanceSource<br/>acciones e índices"]
         KR["KrakenSource<br/>criptomonedas"]
+        ECB["ECBExchangeRateSource<br/>tipos EUR-first"]
         AV["AlphaVantageSource<br/>activos diarios opcionales"]
         RT["runtime.py<br/>registro inmutable"]
         CP["alpha_vantage/capabilities.py<br/>validación y caché"]
@@ -155,6 +188,7 @@ flowchart LR
     end
 
     PS["PriceSeries<br/>limpieza + estadísticos automáticos"]
+    ER["currency.py<br/>ExchangeRates + trazabilidad"]
     MS["MacroSeries"]
     PF["Portfolio<br/>pesos normalizados + alineación temporal"]
     MC["simulation.py<br/>GBM Monte Carlo"]
@@ -166,14 +200,18 @@ flowchart LR
     RT --> AV
     RT --> CP
     NB --> FR
+    NB --> ECB
     YF --> CA
     KR --> CA
     YF --> PS
     KR --> PS
+    ECB --> PS
     AV --> PS
     CA --> PS
     FR --> MS
     PS --> PF
+    PS --> ER
+    ER --> PF
     PF --> MC
     PF --> RP
     MC --> RP
@@ -182,8 +220,10 @@ flowchart LR
 **Flujo típico.** Los cuadernos crean los proveedores y descargan las series (en lotes con `get_many()`, con
 caché opcional). Cada proveedor normaliza su respuesta en `PriceSeries`, que limpia los datos y calcula sus
 estadísticos al construirse. Con varias series se instancia `Portfolio`, que valida y normaliza los pesos y alinea
-los calendarios. Sobre la cartera se calculan métricas, se genera el informe y los gráficos (`reporting.py`) y se
-lanza la simulación Monte Carlo (`simulation.py`), cuyos resultados también se visualizan. Los cuadernos
+los calendarios. Si se declara una divisa de reporte, `currency.py` selecciona tipos históricos directos, inversos o
+cruzados por EUR, convierte los precios y registra cada tramo utilizado antes del análisis. Sobre la cartera se
+calculan métricas, se genera el informe y los gráficos (`reporting.py`) y se lanza la simulación Monte Carlo
+(`simulation.py`), cuyos resultados también se visualizan. Los cuadernos
 `portfolio_*.ipynb` aíslan cada clase de activo; `quantfolio_demo.ipynb` recorre el toolkit completo y compara las
 cuatro clases en una cartera diversificada.
 
@@ -191,13 +231,14 @@ cuatro clases en una cartera diversificada.
 
 | Módulo | Responsabilidad |
 |---|---|
-| `quantfolio.models` | `PriceSeries` (limpieza, estadísticos automáticos) y utilidades numéricas. |
-| `quantfolio.portfolio` | `Portfolio`: validación de pesos, alineación temporal, métricas, informe y Monte Carlo. |
+| `quantfolio.models` | `PriceSeries` (limpieza, estadísticos y metadatos de cotización) y utilidades numéricas. |
+| `quantfolio.currency` | `ExchangeRates`: selección directa, inversa o cruzada de tipos históricos y trazabilidad de conversiones. |
+| `quantfolio.portfolio` | `Portfolio`: validación de pesos, alineación temporal, precios de reporte, métricas, informe y Monte Carlo. |
 | `quantfolio.risk` | Medidas de riesgo puras: drawdown, Sharpe, CAGR, error estándar de la deriva y VaR/CVaR históricos. |
 | `quantfolio.validation` | Validadores de entrada compartidos (periodos, confianza, tasa libre de riesgo y rentabilidades). |
 | `quantfolio.simulation` | `MonteCarloParameters` y el motor GBM compartido por activo y cartera. |
 | `quantfolio.reporting` | Generación del informe Markdown y de todas las visualizaciones. |
-| `quantfolio.sources` | Contrato `PriceSource`, proveedores base (Yahoo, Kraken) y caché CSV. |
+| `quantfolio.sources` | Contrato `PriceSource`, proveedores (Yahoo, Kraken, ECB) y caché CSV. |
 | `quantfolio.sources.alpha_vantage` | Proveedor opcional de Alpha Vantage: cliente HTTP, capacidades y adaptador `PriceSource`. |
 | `quantfolio.runtime` | Registro inmutable y descubrimiento opcional de Alpha Vantage; FRED permanece separado. |
 | `quantfolio.macro` | `MacroSeries` y proveedor FRED vía ALFRED, con vintages punto-en-el-tiempo, para la tipología de datos adicional. |

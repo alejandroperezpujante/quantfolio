@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from quantfolio.currency import ExchangeRates
+from quantfolio.models import PriceSeries
 from quantfolio.portfolio import Portfolio
 from quantfolio.reporting import plot_portfolio_report, plot_simulation_paths
 from quantfolio.risk import max_drawdown
@@ -32,6 +34,29 @@ def _build_portfolio() -> Portfolio:
             "BBB": make_series("BBB", [20.0 + position for position in range(10)]),
         },
         weights={"AAA": 0.5, "BBB": 0.5},
+    )
+
+
+def _build_reporting_currency_portfolio() -> Portfolio:
+    """Return a USD series converted by manually supplied USD/EUR rates."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06"])
+    asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([100.0, 110.0, 105.0], index=dates),
+        source="Manual asset input",
+        quote_currency="USD",
+    )
+    rate = PriceSeries(
+        ticker="FX:USD/EUR",
+        prices=pd.Series([0.9, 0.95], index=dates[:2]),
+        source="Manual FX input",
+        quote_currency="EUR",
+    )
+    return Portfolio(
+        assets={asset.ticker: asset},
+        weights={asset.ticker: 1.0},
+        reporting_currency="EUR",
+        exchange_rates=ExchangeRates([rate]),
     )
 
 
@@ -151,6 +176,84 @@ def test_plot_portfolio_report_rebases_staggered_prices(
     assert float(np.asarray(lines[0].get_xdata())[0]) == pytest.approx(
         float(np.asarray(lines[1].get_xdata())[0])
     )
+
+
+def test_plot_portfolio_report_uses_reporting_currency_prices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The price panel reflects both local price changes and FX movements."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    plot_portfolio_report(_build_reporting_currency_portfolio())
+
+    price_axis = plt.gcf().axes[0]
+    values = np.asarray(price_axis.lines[0].get_ydata())
+    assert values == pytest.approx([100.0, 104.5 / 90.0 * 100.0, 99.75 / 90.0 * 100.0])
+
+
+def test_legacy_report_discloses_unassessed_currency_conversion() -> None:
+    """Currency-free portfolios state that conversion was not assessed."""
+    report = _build_portfolio().report()
+
+    assert "La conversión de divisas no se ha evaluado" in report
+    assert "desconocida" in report
+
+
+def test_report_preserves_the_original_quote_unit() -> None:
+    """A normalized minor unit remains visible beside its canonical currency."""
+    asset = PriceSeries(
+        ticker="VOD.L",
+        prices=pd.Series([120.0, 125.0], index=pd.DatetimeIndex(["2025-01-02", "2025-01-03"])),
+        quote_unit="GBX",
+    )
+    portfolio = Portfolio(assets={asset.ticker: asset}, weights={asset.ticker: 1.0})
+
+    assert "| VOD.L | GBP (GBX) | 100.00% |" in portfolio.report()
+
+
+def test_legacy_currency_diagnostics_are_empty_with_stable_columns() -> None:
+    """Legacy portfolios expose an empty trace instead of implying FX use."""
+    diagnostics = _build_portfolio().currency_conversion_diagnostics()
+
+    assert diagnostics.empty
+    assert list(diagnostics.columns) == [
+        "asset",
+        "asset_date",
+        "source_currency",
+        "reporting_currency",
+        "pair",
+        "source",
+        "rate_date",
+        "age_days",
+        "rate",
+        "applied_rate",
+        "inverted",
+        "carried_forward",
+    ]
+
+
+def test_currency_report_includes_rate_trace_and_daily_cutoff_limit() -> None:
+    """Currency-aware reports identify rate provenance, dates and carried values."""
+    report = _build_reporting_currency_portfolio().report()
+
+    assert "Divisa de reporte: EUR" in report
+    assert "FX:USD/EUR" in report
+    assert "Manual FX input" in report
+    assert "2025-01-02, 2025-01-03" in report
+    assert "| 1 |" in report
+    assert "corte intradía" in report
+
+
+def test_currency_conversion_diagnostics_list_each_rate_use() -> None:
+    """Diagnostics retain asset dates, provider dates and carry-forward age."""
+    diagnostics = _build_reporting_currency_portfolio().currency_conversion_diagnostics()
+
+    assert list(diagnostics["pair"].unique()) == ["FX:USD/EUR"]
+    assert list(diagnostics["rate_date"].unique()) == list(
+        pd.DatetimeIndex(["2025-01-02", "2025-01-03"])
+    )
+    assert diagnostics["carried_forward"].tolist() == [False, False, True]
+    assert diagnostics["age_days"].tolist() == [0, 0, 3]
 
 
 def test_plot_simulation_paths_runs_headless(

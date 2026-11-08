@@ -35,6 +35,7 @@ from quantfolio.validation import (
 if TYPE_CHECKING:
     import pandas as pd
 
+    from quantfolio.models import PriceSeries
     from quantfolio.portfolio import Portfolio
 
 #: Human-readable name of the return period implied by periods_per_year.
@@ -59,6 +60,14 @@ def _period_label(periods_per_year: int) -> str:
 
     """
     return _PERIOD_LABELS.get(periods_per_year, "por periodo")
+
+
+def _quote_currency_label(asset: PriceSeries) -> str:
+    """Return the known currency and original quote unit for a report row."""
+    currency = asset.quote_currency or "desconocida"
+    if asset.quote_unit is not None and asset.quote_unit != asset.quote_currency:
+        return f"{currency} ({asset.quote_unit})"
+    return currency
 
 
 def render_portfolio_report(
@@ -133,10 +142,25 @@ def render_portfolio_report(
         "",
         "## 1. Composición",
         "",
-        "| Activo | Peso |",
-        "|---|---:|",
+        "| Activo | Divisa local | Peso |",
+        "|---|---|---:|",
     ]
-    lines.extend(f"| {ticker} | {weight:.2%} |" for ticker, weight in portfolio.weights.items())
+    lines.extend(
+        f"| {ticker} | {_quote_currency_label(portfolio.assets[ticker])} | {weight:.2%} |"
+        for ticker, weight in portfolio.weights.items()
+    )
+    if portfolio.reporting_currency is None:
+        currency_note = (
+            "_La conversión de divisas no se ha evaluado; el análisis conserva la divisa local._"
+        )
+        lines.extend(
+            [
+                "",
+                currency_note,
+            ]
+        )
+    else:
+        lines.extend(["", f"- Divisa de reporte: {portfolio.reporting_currency}."])
     lines.extend(metrics_lines)
 
     section = 3
@@ -150,6 +174,10 @@ def render_portfolio_report(
                 section=section,
             )
         )
+        section += 1
+
+    if portfolio.reporting_currency is not None:
+        lines.extend(_render_currency_conversion_section(portfolio, section=section))
         section += 1
 
     if include_warnings:
@@ -166,6 +194,39 @@ def render_portfolio_report(
         )
 
     return "\n".join(lines)
+
+
+def _render_currency_conversion_section(portfolio: Portfolio, *, section: int) -> list[str]:
+    """Render rate provenance, observation dates and carried observations."""
+    diagnostics = portfolio.currency_conversion_diagnostics()
+    lines = [
+        "",
+        f"## {section}. Conversión de divisas",
+        "",
+        "| Activo | Par | Fuente | Fechas de observación | Arrastres |",
+        "|---|---|---|---|---:|",
+    ]
+    for ticker in portfolio.assets:
+        asset_rows = diagnostics[diagnostics["asset"] == ticker]
+        groups = asset_rows.groupby(["pair", "source"], sort=False)
+        for (pair, source), rows in groups:
+            observation_dates = (
+                "-"
+                if pair == "-"
+                else ", ".join(sorted({date.strftime("%Y-%m-%d") for date in rows["rate_date"]}))
+            )
+            carry_forwards = int(rows["carried_forward"].sum())
+            lines.append(
+                f"| {ticker} | {pair} | {source} | {observation_dates} | {carry_forwards} |"
+            )
+    lines.extend(
+        [
+            "",
+            "_Los tipos ECB son referencias informativas, no precios de ejecución de un bróker._",
+            "_Las fechas diarias no establecen un corte intradía común entre mercados._",
+        ]
+    )
+    return lines
 
 
 def _render_quality_section(
@@ -371,14 +432,23 @@ def plot_portfolio_report(portfolio: Portfolio) -> None:
         portfolio: Portfolio to plot.
 
     """
-    prices = portfolio.get_prices().dropna(how="any")
+    prices = (
+        portfolio.get_reporting_prices()
+        if portfolio.reporting_currency is not None
+        else portfolio.get_prices()
+    ).dropna(how="any")
     returns = portfolio.get_returns()
     figure, axes = plt.subplots(2, 2, figsize=(14, 10))
 
     prices_axis = axes[0, 0]
     normalized_prices = prices.divide(prices.iloc[0]).multiply(PERFORMANCE_BASE)
     normalized_prices.plot(ax=prices_axis)
-    prices_axis.set_title(f"Evolución de precios (base {PERFORMANCE_BASE:.0f})")
+    title = f"Evolución de precios (base {PERFORMANCE_BASE:.0f})"
+    if portfolio.reporting_currency is not None:
+        title = (
+            f"Evolución de precios en {portfolio.reporting_currency} (base {PERFORMANCE_BASE:.0f})"
+        )
+    prices_axis.set_title(title)
     prices_axis.set_xlabel("Fecha")
     prices_axis.set_ylabel(f"Precio relativo (base {PERFORMANCE_BASE:.0f})")
 

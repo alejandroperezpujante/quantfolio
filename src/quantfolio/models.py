@@ -1,6 +1,7 @@
 """Price-series model with automatic descriptive statistics."""
 
 import math
+import re
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -56,6 +57,54 @@ def clean_numeric_series(
     return cast("pd.Series[float]", cleaned.astype(float))
 
 
+def _normalize_quote_metadata(
+    quote_currency: str | None,
+    quote_unit: str | None,
+) -> tuple[str | None, str | None, float]:
+    """Validate quote metadata and return its canonical currency and unit factor."""
+    unit_currency: str | None = None
+    unit_factor = 1.0
+    normalized_unit = quote_unit
+    if quote_unit is not None:
+        if not isinstance(quote_unit, str) or not quote_unit.strip():
+            msg = "La unidad de cotización debe ser un texto no vacío."
+            raise ValueError(msg)
+        normalized_unit = quote_unit.strip()
+        special_units = {
+            "GBX": ("GBP", 0.01),
+            "ILA": ("ILS", 0.01),
+            "ZAC": ("ZAR", 0.01),
+        }
+        if normalized_unit == "GBp":
+            unit_currency, unit_factor = "GBP", 0.01
+        elif normalized_unit.upper() in special_units:
+            unit_currency, unit_factor = special_units[normalized_unit.upper()]
+        else:
+            unit_currency = _normalize_currency_code(normalized_unit, "La unidad de cotización")
+
+    normalized_currency = (
+        _normalize_currency_code(quote_currency, "La divisa de cotización")
+        if quote_currency is not None
+        else unit_currency
+    )
+    if unit_currency is not None and normalized_currency != unit_currency:
+        msg = "La unidad de cotización no coincide con la divisa indicada."
+        raise ValueError(msg)
+    return normalized_currency, normalized_unit, unit_factor
+
+
+def _normalize_currency_code(value: object, label: str) -> str:
+    """Return an uppercase three-letter currency code after validating its shape."""
+    if not isinstance(value, str):
+        msg = f"{label} debe ser un texto."
+        raise TypeError(msg)
+    code = value.strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", code):
+        msg = f"{label} debe ser un código de tres letras."
+        raise ValueError(msg)
+    return code
+
+
 @dataclass
 class PriceSeries:
     """Historical close prices for a single instrument.
@@ -64,6 +113,8 @@ class PriceSeries:
         ticker: Instrument identifier, for example ``"AAPL"`` or ``"^GSPC"``.
         prices: Close prices indexed by observation date.
         source: Human-readable name of the provider the data came from.
+        quote_currency: Canonical currency code of the normalized close prices, when known.
+        quote_unit: Original unit used by the provider, retained for traceability.
         mean_price: Mean close price, computed automatically on instantiation.
         std_price: Sample standard deviation of close prices, computed automatically on
             instantiation (zero for a single observation).
@@ -73,8 +124,11 @@ class PriceSeries:
     ticker: str
     prices: pd.Series[float]
     source: str = "unknown"
+    quote_currency: str | None = None
+    quote_unit: str | None = None
     mean_price: float = field(init=False)
     std_price: float = field(init=False)
+    _quote_unit_factor: float = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate the input and compute the automatic descriptive statistics.
@@ -90,17 +144,37 @@ class PriceSeries:
         if not isinstance(cast("object", self.prices), pd.Series):
             msg = "prices debe ser una pandas.Series."
             raise TypeError(msg)
+        self.quote_currency, self.quote_unit, self._quote_unit_factor = _normalize_quote_metadata(
+            self.quote_currency,
+            self.quote_unit,
+        )
         if self.prices.empty:
             msg = "La serie de precios no puede estar vacía."
             raise ValueError(msg)
+        if self.ticker.strip().upper().startswith("FX:"):
+            rate_values = pd.to_numeric(self.prices, errors="coerce")
+            if (
+                rate_values.isna().any()
+                or not np.isfinite(rate_values).all()
+                or (rate_values <= 0).any()
+            ):
+                msg = "Los tipos de cambio deben ser positivos y finitos."
+                raise ValueError(msg)
         cleaned = clean_numeric_series(self.prices, require_positive=True)
         if cleaned.empty:
             msg = "La serie debe contener precios positivos válidos."
             raise ValueError(msg)
+        if self._quote_unit_factor < 1.0:
+            cleaned = cleaned * self._quote_unit_factor
         self.prices = cleaned
         self.prices.name = self.ticker
         self.mean_price = float(cleaned.mean())
         self.std_price = float(cleaned.std(ddof=1)) if len(cleaned) >= MIN_OBSERVATIONS else 0.0
+
+    @property
+    def quote_unit_factor(self) -> float:
+        """Return the factor that converts the original quote unit to its currency."""
+        return self._quote_unit_factor
 
     def summary(self, *, periods_per_year: int = TRADING_DAYS_PER_YEAR) -> dict[str, float]:
         """Return the historical return, volatility and risk statistics of the series.
