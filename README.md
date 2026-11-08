@@ -20,6 +20,8 @@ Ortega.
   solicitado.
 - **Modelado con DataClasses**: `PriceSeries` calcula media y desviación típica automáticamente al instanciarse;
   `Portfolio` valida y normaliza las ponderaciones y agrega múltiples activos.
+- **Análisis multimoneda diario**: convierte precios locales a una divisa de reporte antes de calcular
+  rentabilidades, riesgo, gráficos e hipótesis de Monte Carlo, con trazabilidad de cada observación FX.
 - **Limpieza y alineación temporal** explícitas, con diagnósticos de cobertura sobre fechas comunes.
 - **Monte Carlo parametrizable** (trayectorias, horizonte, valor inicial, supuestos de rentabilidad y volatilidad y
   periodos por año), aplicable a un activo individual o a la cartera completa, con visualización de trayectorias y
@@ -77,7 +79,7 @@ El proyecto ya está asociado a esa conexión y clave en `.vscode/settings.json`
 
 El servidor local usa SonarQube Community Build y sus perfiles predeterminados; no replica automáticamente
 los perfiles ni la puerta de calidad privados del servidor del equipo. El análisis en el editor es una ayuda
-local; las comprobaciones obligatorias siguen siendo las de CI. Para ejecutar los cinco cuadernos en orden y
+local; las comprobaciones obligatorias siguen siendo las de CI. Para ejecutar los seis cuadernos en orden y
 sin sobrescribir los archivos fuente, usa:
 
 ```console
@@ -85,8 +87,9 @@ uv run jupyter nbconvert --to notebook --execute \
   --output-dir /tmp/quantfolio-notebooks notebooks/*.ipynb
 ```
 
-La ejecución requiere acceso a Internet para consultar las fuentes de mercado y macroeconómicas; las pruebas
-de `pytest` siguen siendo independientes de la red. Los datos descargados se guardan en la caché local.
+La ejecución requiere acceso a Internet para consultar las fuentes de mercado y macroeconómicas; el cuaderno de
+multidivisa usa una respuesta ECB guardada para poder ejecutarse sin red. Las pruebas de `pytest` también son
+independientes de la red. Los datos descargados se guardan en la caché local.
 
 ## Uso
 
@@ -112,8 +115,10 @@ Monte Carlo:
 | [`portfolio_indices.ipynb`](notebooks/portfolio_indices.ipynb) | SPY, QQQ, IWM, EFA, EEM | 252 sesiones |
 | [`portfolio_fixed_income.ipynb`](notebooks/portfolio_fixed_income.ipynb) | SHY, IEF, TLT, LQD, HYG | 252 sesiones |
 | [`portfolio_crypto.ipynb`](notebooks/portfolio_crypto.ipynb) | BTC/USD, ETH/USD, SOL/USD, ADA/USD | 365 días |
+| [`portfolio_multi_currency.ipynb`](notebooks/portfolio_multi_currency.ipynb) | Activos didácticos EUR y USD; tipos ECB y manuales | Calendario diario |
 
-Todos los ejemplos están denominados en USD para no mezclar divisas. El cuaderno de cripto usa 365 periodos
+Los cuatro cuadernos por clase de activo están denominados en USD para no mezclar divisas. El cuaderno de
+multidivisa compara activos EUR y USD en una cartera con reporte EUR. El cuaderno de cripto usa 365 periodos
 porque su calendario cotiza todos los días; el resto usa 252 sesiones.
 
 ### Ejemplo mínimo
@@ -161,14 +166,17 @@ portfolio.plot_simulation(simulations)
 │   ├── validation.py        # validadores de entrada compartidos
 │   ├── reporting.py         # informes Markdown y visualizaciones
 │   ├── macro.py             # MacroSeries y proveedor FRED vía ALFRED (vintages)
-│   └── sources/             # contrato PriceSource + Yahoo, Kraken y caché CSV
+│   ├── currency.py          # selección y conversión de tipos de cambio históricos
+│   └── sources/             # contrato PriceSource + Yahoo, Kraken, ECB y caché CSV
+│       ├── ecb.py           # proveedor de referencias diarias del ECB
 │       └── alpha_vantage/   # proveedor opcional: cliente, capacidades y provider
 ├── notebooks/               # punto de entrada y carteras por clase de activo
 │   ├── quantfolio_demo.ipynb
 │   ├── portfolio_stocks.ipynb
 │   ├── portfolio_indices.ipynb
 │   ├── portfolio_fixed_income.ipynb
-│   └── portfolio_crypto.ipynb
+│   ├── portfolio_crypto.ipynb
+│   └── portfolio_multi_currency.ipynb
 ├── tests/                   # suite sin red, con dobles de proveedor
 ├── docs/                    # investigación de fondo y arquitectura
 ├── pyproject.toml           # dependencias y configuración de ruff, mypy y pytest
@@ -186,6 +194,9 @@ DataClass que representa una serie temporal de precios con sus metadatos (`ticke
 - convierte a numérico, elimina `NaN`, valores no finitos y precios no positivos, ordena el índice y elimina
   duplicados;
 - calcula automáticamente `mean_price` (media) y `std_price` (desviación típica muestral), como exige el enunciado.
+- puede registrar `quote_currency` y `quote_unit`. Acepta códigos ISO de tres letras; normaliza GBX/GBp a GBP,
+  ILA a ILS y ZAc a ZAR multiplicando los precios por 0,01, y conserva la unidad original para su trazabilidad.
+  Yahoo obtiene la unidad desde sus metadatos; Kraken y Alpha Vantage reconocen la divisa de pares explícitos. Si no se conoce, proporciona la divisa manualmente. La caché antigua puede requerir `refresh=True`.
 
 El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_volatility`,
 `annualized_return_approx`, `annualized_volatility`, `max_drawdown` y `sharpe_ratio`.
@@ -193,13 +204,24 @@ El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_
 ### `Portfolio`
 
 Una **cartera de inversión** es una colección de activos junto con la fracción del capital invertido en cada uno
-(las ponderaciones). `Portfolio` la modela como una DataClass de dos diccionarios (`assets` y `weights`) y:
+(las ponderaciones). `Portfolio` la modela con los diccionarios `assets` y `weights`, además de opciones de moneda:
 
 - valida que cada activo tenga ponderación, que las claves coincidan con los tickers y que los pesos sean finitos y
   no negativos;
 - **normaliza** las ponderaciones para que sumen 1 (acepta pesos arbitrarios como `{AAPL: 35, SPY: 25, ...}`);
 - agrega los activos en una tabla de precios por fecha, calcula rentabilidades diarias ponderadas y estadísticos
   anualizados, y ofrece informe, gráficos y simulación de Monte Carlo.
+- puede fijar `reporting_currency` y una colección `ExchangeRates`. `get_prices()` mantiene la vista de precios
+  locales y `get_reporting_prices()` entrega la vista convertida que usan las rentabilidades y los análisis. La
+  conversión requiere divisa conocida en todos los activos; las carteras antiguas sin divisas siguen disponibles,
+  y sus informes indican que no se evaluó la conversión.
+
+`ExchangeRates` admite series `PriceSeries` manuales o `ExchangeRates.from_source(...)`. Los tickers usan el orden
+`FX:AAA/BBB`: cada valor expresa unidades de `BBB` por una unidad de `AAA`. La resolución usa primero el par directo,
+después el inverso y finalmente un cruce por EUR; si un par no tiene una observación anterior dentro del límite de
+edad, prueba la siguiente ruta. Los valores no positivos o no finitos se rechazan. Por defecto acepta observaciones
+de hasta cuatro días naturales de antigüedad y comprueba ese límite para cada tramo del cruce. Los diagnósticos y el informe conservan el proveedor,
+el par y la fecha de cada tipo aplicado. Las fechas diarias no fijan un corte intradía común.
 
 La cartera expone `max_drawdown()`, `sharpe_ratio(periods_per_year=...)`, `value_at_risk(confidence=...)` y
 `conditional_value_at_risk(confidence=...)`, y `report()` acepta `risk_free_rate` y `confidence`.
@@ -211,12 +233,18 @@ La cartera expone `max_drawdown()`, `sharpe_ratio(periods_per_year=...)`, `value
 | Yahoo Finance | `YahooFinanceSource` | acciones, ETF y índices | no | `AAPL`, `SPY`, `^GSPC`, `^IBEX` |
 | Kraken | `KrakenSource` | criptomonedas (OHLC diario) | no | `BTC/USD`, `ETHUSD` |
 | Alpha Vantage (opcional) | `AlphaVantageSource` | acciones, índices, FX, cripto y materias primas diarias | `ALPHA_VANTAGE_API_KEY` | `IBM`, `FX:EUR/USD`, `COMMODITY:WTI` |
+| ECB Data Portal | `ECBExchangeRateSource` | tipos de cambio diarios EUR/otra divisa | no | `FX:EUR/USD` |
 | FRED/ALFRED | `FredMacroSource` | indicadores macro y tipos de interés, con vintages punto-en-el-tiempo (`as_of`) | no | `DGS10`, `CPIAUCSL` |
 | Caché CSV local | `CachedPriceSource` | envoltorio sobre cualquier proveedor | no | — |
 
 Todos los proveedores de precios implementan el contrato `PriceSource` (`sources/base.py`) y devuelven objetos
 `PriceSeries` idénticos y compatibles entre sí, con independencia de la API consultada. `get_many()` permite
 descargar varias series a partir de una lista de activos (en lote, secuencial).
+
+`ECBExchangeRateSource` implementa `PriceSource` para los pares EUR-first `FX:EUR/DIVISA`; devuelve unidades de la
+divisa cotizada por EUR a partir del [API diario del ECB](https://data.ecb.europa.eu/help/api/data-examples).
+Son tipos de referencia informativos, no precios de ejecución de bróker. La caché CSV conserva la divisa y la unidad
+de cotización; los archivos antiguos se leen con esos metadatos desconocidos y no se completan por inferencia.
 
 Las descargas macro (`FredMacroSource`) usan el endpoint de **ALFRED**, el archivo de vintages de FRED: sin vintage
 solicitado sirve los mismos valores que FRED, y cada `MacroSeries` registra en su campo `vintage_date` el vintage del
@@ -320,7 +348,7 @@ natural.
 
 ## Informes
 
-- `Portfolio.report()` genera el informe Markdown parametrizable: composición, métricas históricas, calidad de los
+- `Portfolio.report()` genera el informe Markdown parametrizable: composición, divisas y unidades locales, métricas históricas, calidad de los
   datos y advertencias de riesgo, con opciones `periods_per_year`, `include_quality`, `include_warnings`,
   `risk_free_rate` y `confidence`. Las advertencias se derivan del estado real de la cartera: cobertura de
   alineación, volatilidad elevada, caída profunda, concentración superior al 50 %, intervalos de varios días e
@@ -331,7 +359,7 @@ natural.
   anualizada. `risk_free_rate` y `confidence` son parámetros del método.
 - La sección de calidad muestra el periodo de la muestra, los años de historia, la cobertura por
   activo y el porcentaje de intervalos entre retornos que abarcan más de un día natural.
-- `Portfolio.plots_report()` muestra el panel analítico: evolución de precios **reajustada a base 100**,
+- `Portfolio.plots_report()` muestra el panel analítico en la divisa de reporte, si se configuró: evolución de precios **reajustada a base 100**,
   comparativa de rentabilidad acumulada, matriz de correlación y evolución del valor de la cartera (base 100).
 - `PriceSeries.plot_simulation()` y `Portfolio.plot_simulation()` visualizan las trayectorias simuladas y la
   distribución final: del precio final en un activo y del valor final en una cartera.
@@ -424,9 +452,8 @@ pasen el análisis. Cuando el *quality gate* no está en verde, el paso del esc�
 
 ## Limitaciones y advertencias
 
-- La biblioteca **no convierte divisas**: los ejemplos usan activos denominados en USD para que las
-  comparaciones sean monetariamente homogéneas. Mezclar activos en otras monedas sigue siendo responsabilidad de
-  quien construye la cartera.
+- La conversión de divisas requiere una divisa de reporte, cotizaciones conocidas y tipos de cambio históricos suministrados por la persona usuaria.
+
 - Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
   `KrakenSource` lanza un error explicativo y no devuelve una serie truncada. Para recuperar el cuaderno,
   adelanta `START` a una fecha concreta dentro de los últimos ~700 días (por ejemplo `2026-01-02`) y mantén la
@@ -450,8 +477,8 @@ pasen el análisis. Cuando el *quality gate* no está en verde, el paso del esc�
 | Bloque del taller | Implementación |
 |---|---|
 | Repositorio y despliegue *plug-and-play* | `pyproject.toml` + `uv.lock` (instalación con `uv sync`), README, `.gitignore`, CI. |
-| Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, Alpha Vantage opcional, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
-| Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos) y `Portfolio` (agregación, pesos normalizados y correlaciones, calculadas en `plots_report`). |
+| Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, Alpha Vantage opcional, ECB, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
+| Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos y metadatos de cotización), `ExchangeRates` y `Portfolio` (agregación y análisis opcional en divisa de reporte). |
 | Motor Monte Carlo | `Portfolio.simulate_monte_carlo()` y `PriceSeries.simulate_monte_carlo()` con `MonteCarloParameters`; `plot_simulation()`. |
 | Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; sección de validación de entradas en este README. |
 | Estructura y diagramado | `src/` solo biblioteca, `notebooks/` como entrada reproducible y `docs/architecture.md` con los diagramas. |

@@ -1,11 +1,12 @@
 """Yahoo Finance price source."""
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, cast
 
 import pandas as pd
 import yfinance as yf  # type: ignore[import-untyped]
 
-from quantfolio.models import PriceSeries
+from quantfolio.models import PriceSeries, _normalize_quote_metadata
 from quantfolio.sources.base import PriceSource, validate_ticker
 
 if TYPE_CHECKING:
@@ -89,4 +90,13 @@ class YahooFinanceSource(PriceSource):
             raise ValueError(msg)
         prices = _extract_close(data).rename(symbol)
         prices.index = pd.DatetimeIndex(prices.index)
-        return PriceSeries(ticker=symbol, prices=prices, source=self.name)
+        try:
+            metadata = yf.Ticker(symbol).get_history_metadata()
+            unit = metadata.get("currency") if isinstance(metadata, Mapping) else None
+            if not isinstance(unit, str):
+                unit = None
+            if unit is not None:
+                _normalize_quote_metadata(None, unit)
+        except ValueError, TypeError, KeyError, OSError:
+            unit = None
+        return PriceSeries(ticker=symbol, prices=prices, source=self.name, quote_unit=unit)

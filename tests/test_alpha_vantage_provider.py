@@ -755,6 +755,7 @@ def test_crypto_route_uses_the_current_plain_close(monkeypatch: pytest.MonkeyPat
     assert stub.calls == [
         {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "1INCH", "market": "USD"}
     ]
+    assert asset.quote_currency == "USD"
     assert asset.ticker == "CRYPTO:1inch/usd"
     assert asset.source == "Alpha Vantage (premium, daily)"
     assert list(asset.prices) == [40000.0, 40001.0]
@@ -951,3 +952,21 @@ def test_get_many_routes_each_ticker_family(monkeypatch: pytest.MonkeyPatch) -> 
     assert result["INDEX:SPX"].ticker == "INDEX:SPX"
     assert result["FX:EUR/USD"].ticker == "FX:EUR/USD"
     assert [call["function"] for call in stub.calls] == ["INDEX_DATA", "FX_DAILY"]
+
+
+def test_fx_provider_marks_its_explicit_quote_currency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider pair carries its explicitly defined quote currency into PriceSeries."""
+    install_client(monkeypatch, [fx_payload(pd.Timestamp("2025-01-02"), 2)])
+
+    asset = premium_source().get_prices("FX:EUR/USD", "2025-01-02")
+
+    assert asset.quote_currency == "USD"
+
+
+def test_crypto_non_currency_market_remains_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A market identifier outside the currency-code format is not assumed to be fiat."""
+    install_client(monkeypatch, [crypto_payload(pd.Timestamp("2025-01-02"), 2)])
+    asset = premium_source().get_prices("CRYPTO:BTC/USDT", "2025-01-02")
+    assert asset.quote_currency is None

@@ -109,7 +109,14 @@ class CachedPriceSource(PriceSource):
         window = self._covered_window(cached, start, end)
         if len(window) < MIN_OBSERVATIONS:
             return None
-        return PriceSeries(ticker=ticker, prices=window, source=self.name)
+        raw_unit_prices = window / cached.quote_unit_factor
+        return PriceSeries(
+            ticker=ticker,
+            prices=raw_unit_prices,
+            source=f"{cached.source} (cache)",
+            quote_currency=cached.quote_currency,
+            quote_unit=cached.quote_unit,
+        )
 
     def _read_cached_series(self, path: Path, ticker: str) -> PriceSeries | None:
         """Return the cached series when the file belongs to the requested ticker.
@@ -122,15 +129,35 @@ class CachedPriceSource(PriceSource):
                 path,
                 index_col="Date",
                 parse_dates=True,
-                dtype={"Close": float, "ticker": str},
+                dtype={
+                    "Close": float,
+                    "ticker": str,
+                    "quote_currency": str,
+                    "quote_unit": str,
+                    "source": str,
+                },
                 keep_default_na=False,
             )
             if frame.empty or not self._matches_ticker(frame, ticker):
                 return None
             raw = cast("pd.Series[float]", frame["Close"])
-            return PriceSeries(ticker=ticker, prices=raw, source=self.name)
+            return PriceSeries(
+                ticker=ticker,
+                prices=raw,
+                source=self._optional_text(frame, "source") or self._source.name,
+                quote_currency=self._optional_text(frame, "quote_currency"),
+                quote_unit=self._optional_text(frame, "quote_unit"),
+            )
         except OSError, KeyError, TypeError, ValueError:
             return None
+
+    @staticmethod
+    def _optional_text(frame: pd.DataFrame, column: str) -> str | None:
+        """Return a non-empty cached metadata field, if the CSV contains one."""
+        if column not in frame.columns:
+            return None
+        value = frame[column].iloc[0]
+        return value if isinstance(value, str) and value else None
 
     @staticmethod
     def _matches_ticker(frame: pd.DataFrame, ticker: str) -> bool:
@@ -165,8 +192,12 @@ class CachedPriceSource(PriceSource):
 
     @staticmethod
     def _write_cache(path: Path, asset: PriceSeries, symbol: str) -> None:
-        """Write the close prices and the requested ticker of a series to the CSV cache."""
+        """Write raw quote-unit prices, metadata and the requested ticker to the CSV cache."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        asset.prices.rename("Close").to_frame().assign(ticker=symbol).to_csv(
-            path, index_label="Date"
-        )
+        raw_unit_prices = asset.prices / asset.quote_unit_factor
+        raw_unit_prices.rename("Close").to_frame().assign(
+            ticker=symbol,
+            quote_currency=asset.quote_currency,
+            quote_unit=asset.quote_unit,
+            source=asset.source,
+        ).to_csv(path, index_label="Date")

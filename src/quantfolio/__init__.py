@@ -1,6 +1,7 @@
 """Quantfolio: multi-source market data, price analysis and portfolio management."""
 
 from quantfolio.constants import TRADING_DAYS_PER_YEAR
+from quantfolio.currency import ExchangeRateObservation, ExchangeRates
 from quantfolio.macro import FredMacroSource, MacroSeries
 from quantfolio.models import PriceSeries
 from quantfolio.portfolio import Portfolio
@@ -19,6 +20,7 @@ from quantfolio.sources import (
     AlphaVantagePlan,
     AlphaVantageSource,
     CachedPriceSource,
+    ECBExchangeRateSource,
     KrakenSource,
     PriceSource,
     YahooFinanceSource,
@@ -29,6 +31,9 @@ __all__ = [
     "AlphaVantagePlan",
     "AlphaVantageSource",
     "CachedPriceSource",
+    "ECBExchangeRateSource",
+    "ExchangeRateObservation",
+    "ExchangeRates",
     "FredMacroSource",
     "KrakenSource",
     "MacroSeries",

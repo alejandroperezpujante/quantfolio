@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import quantfolio
+from quantfolio.currency import ExchangeRates
 from quantfolio.models import PriceSeries
 from quantfolio.portfolio import Portfolio
 from quantfolio.risk import historical_cvar, historical_var, max_drawdown, sharpe_ratio
@@ -283,7 +284,7 @@ def test_report_contains_composition_metrics_quality_and_warnings() -> None:
 
     assert report.startswith("# Informe de la cartera")
     assert "## 1. Composición" in report
-    assert "| AAA | 50.00% |" in report
+    assert "| AAA | desconocida | 50.00% |" in report
     assert "## 2. Métricas históricas" in report
     assert "## 3. Calidad de los datos" in report
     assert "## 4. Advertencias de riesgo" in report
@@ -722,3 +723,42 @@ def test_alignment_summary_handles_disjoint_calendars() -> None:
     assert summary["multi_day_returns"] == 0
     assert summary["multi_day_share"] == 0.0
     assert summary["max_gap_days"] == 0
+
+
+def test_reporting_currency_returns_drive_risk_and_monte_carlo() -> None:
+    """Risk and simulation assumptions use the same FX-converted asset prices."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06"])
+    asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([100.0, 110.0, 105.0], index=dates),
+        quote_currency="USD",
+    )
+    rate = PriceSeries(
+        ticker="FX:USD/EUR",
+        prices=pd.Series([0.9, 0.95], index=dates[:2]),
+        source="Manual FX input",
+        quote_currency="EUR",
+    )
+    portfolio = Portfolio(
+        assets={asset.ticker: asset},
+        weights={asset.ticker: 1.0},
+        reporting_currency="EUR",
+        exchange_rates=ExchangeRates([rate]),
+    )
+    expected_returns = portfolio.get_reporting_prices().pct_change().dropna()[asset.ticker]
+
+    assert portfolio.portfolio_returns().tolist() == pytest.approx(expected_returns.tolist())
+    assert portfolio.summary()["mean_daily_return"] == pytest.approx(float(expected_returns.mean()))
+    assert portfolio.max_drawdown() == pytest.approx(max_drawdown(expected_returns))
+
+    simulations = portfolio.simulate_monte_carlo(
+        MonteCarloParameters(
+            n_paths=1,
+            horizon=252,
+            initial_value=100.0,
+            volatility_assumption=0.0,
+            seed=1,
+        )
+    )
+    expected_log_growth = float(np.log1p(expected_returns).mean()) * 252
+    assert simulations.iloc[-1, 0] == pytest.approx(100.0 * np.exp(expected_log_growth))

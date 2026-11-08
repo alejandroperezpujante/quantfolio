@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import quantfolio
+
 ROOT = Path(__file__).resolve().parents[1]
 
 NOTEBOOKS = [
@@ -13,6 +15,7 @@ NOTEBOOKS = [
     "notebooks/portfolio_indices.ipynb",
     "notebooks/portfolio_fixed_income.ipynb",
     "notebooks/portfolio_crypto.ipynb",
+    "notebooks/portfolio_multi_currency.ipynb",
 ]
 
 
@@ -36,8 +39,35 @@ def test_notebooks_pin_the_end_date_and_have_no_errors(path: str) -> None:
     call_lines = [
         line
         for line in sources.splitlines()
-        if any(token in line for token in (".get_prices(", ".get_many(", ".get_series("))
+        if "portfolio.get_prices(" not in line
+        and any(token in line for token in (".get_prices(", ".get_many(", ".get_series("))
     ]
     assert call_lines, path
     assert all("end=END" in line for line in call_lines), path
     assert any(cell.get("outputs") for cell in code_cells), path
+
+
+def test_currency_models_are_exported_from_the_public_api() -> None:
+    """Currency conversion types and the ECB source are importable from quantfolio."""
+    for name in ("ECBExchangeRateSource", "ExchangeRateObservation", "ExchangeRates"):
+        assert name in quantfolio.__all__
+        assert getattr(quantfolio, name)
+
+
+def test_multi_currency_notebook_demonstrates_ecb_and_manual_rates() -> None:
+    """The notebook compares mixed local currencies, ECB rates and manual rates."""
+    path = ROOT / "notebooks/portfolio_multi_currency.ipynb"
+    assert path.is_file()
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    sources = "\n".join("".join(cell["source"]) for cell in code_cells)
+
+    assert "ECBExchangeRateSource()" in sources
+    assert 'ecb_source.get_prices("FX:EUR/USD"' in sources
+    assert 'ticker="FX:USD/EUR"' in sources
+    assert 'quote_currency="USD"' in sources
+    assert 'reporting_currency="EUR"' in sources
+    assert ".get_reporting_prices()" in sources
+    assert ".pct_change()" in sources
+    assert 'END = "2026-11-06"' in sources
+    assert any(cell.get("outputs") for cell in code_cells)

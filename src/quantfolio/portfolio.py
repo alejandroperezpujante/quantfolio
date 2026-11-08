@@ -1,7 +1,7 @@
 """Portfolio model aggregating price series with weights."""
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 import pandas as pd
@@ -11,6 +11,8 @@ from quantfolio.constants import (
     MIN_OBSERVATIONS,
     TRADING_DAYS_PER_YEAR,
 )
+from quantfolio.currency import ExchangeRateObservation, ExchangeRates
+from quantfolio.models import _normalize_currency_code
 from quantfolio.reporting import (
     plot_portfolio_report,
     plot_simulation_paths,
@@ -36,6 +38,22 @@ def _calendar_gaps(dates: pd.DatetimeIndex) -> pd.Series[int]:
     return dates.to_series().diff().dt.days.dropna().astype(int)
 
 
+_CURRENCY_DIAGNOSTIC_COLUMNS = (
+    "asset",
+    "asset_date",
+    "source_currency",
+    "reporting_currency",
+    "pair",
+    "source",
+    "rate_date",
+    "age_days",
+    "rate",
+    "applied_rate",
+    "inverted",
+    "carried_forward",
+)
+
+
 @dataclass
 class Portfolio:
     """Weighted collection of price series.
@@ -47,11 +65,15 @@ class Portfolio:
     Attributes:
         assets: Mapping from ticker to the corresponding price series.
         weights: Mapping from ticker to its portfolio weight; normalized on instantiation.
+        reporting_currency: Optional target currency used by portfolio analysis.
+        exchange_rates: Historical rates available for converting asset prices.
 
     """
 
     assets: dict[str, PriceSeries]
     weights: dict[str, float]
+    reporting_currency: str | None = None
+    exchange_rates: ExchangeRates = field(default_factory=ExchangeRates)
 
     def __post_init__(self) -> None:
         """Validate the composition and normalize the weights to sum to one.
@@ -82,9 +104,52 @@ class Portfolio:
             msg = "La suma de las ponderaciones debe ser positiva."
             raise ValueError(msg)
         self.weights = {ticker: weight / total_weight for ticker, weight in self.weights.items()}
+        self._validate_currency_configuration()
+
+    def _validate_currency_configuration(self) -> None:
+        """Validate explicit reporting currency and asset quote-currency metadata."""
+        exchange_rates: object = self.exchange_rates
+        if not isinstance(exchange_rates, ExchangeRates):
+            msg = "exchange_rates debe ser una colección ExchangeRates."
+            raise TypeError(msg)
+        if self.reporting_currency is not None:
+            self.reporting_currency = _normalize_currency_code(
+                self.reporting_currency,
+                "La divisa de reporte",
+            )
+            unknown = [
+                ticker for ticker, asset in self.assets.items() if asset.quote_currency is None
+            ]
+            if unknown:
+                tickers = ", ".join(unknown)
+                msg = (
+                    f"Cada activo necesita una divisa de cotización conocida: {tickers}. "
+                    "Indica quote_currency manualmente o actualiza la caché."
+                )
+                raise ValueError(msg)
+            return
+
+        currencies = {
+            asset.quote_currency for asset in self.assets.values() if asset.quote_currency
+        }
+        unknown_count = sum(asset.quote_currency is None for asset in self.assets.values())
+        if len(currencies) > 1:
+            msg = (
+                "La cartera mezcla divisas; indica una divisa de reporte "
+                "para convertir los activos."
+            )
+            raise ValueError(msg)
+        if currencies and unknown_count:
+            msg = (
+                "No se pueden combinar divisas conocidas y desconocidas sin una divisa de reporte."
+            )
+            raise ValueError(msg)
+        if self.exchange_rates.rates:
+            msg = "Debes indicar una divisa de reporte para usar tipos de cambio."
+            raise ValueError(msg)
 
     def get_prices(self) -> pd.DataFrame:
-        """Return the close prices of every asset aligned on their date union.
+        """Return local-currency close prices on the union of asset calendars.
 
         Missing observations are kept as ``NaN`` so that the raw calendars remain visible;
         use :meth:`get_returns` for the aligned analysis view.
@@ -93,6 +158,120 @@ class Portfolio:
             {ticker: asset.prices for ticker, asset in self.assets.items()},
             axis=1,
         ).sort_index()
+
+    def get_reporting_prices(self) -> pd.DataFrame:
+        """Return asset close prices converted to the portfolio reporting currency.
+
+        Each rate observation is selected on or before the asset date. The returned frame
+        keeps the union of the original asset calendars, and rate trace data is available
+        through :meth:`_reporting_prices_and_rate_uses` for diagnostics.
+
+        Raises:
+            ValueError: If no reporting currency is set or a conversion rate is missing,
+                stale, invalid or future-dated.
+
+        """
+        return self._reporting_prices_and_rate_uses()[0]
+
+    def _reporting_prices_and_rate_uses(
+        self,
+    ) -> tuple[pd.DataFrame, list[tuple[str, pd.Timestamp, ExchangeRateObservation]]]:
+        """Build converted prices and retain the rate legs used for each observation."""
+        if self.reporting_currency is None:
+            msg = "Debes indicar una divisa de reporte para obtener precios convertidos."
+            raise ValueError(msg)
+        prices: dict[str, pd.Series[float]] = {}
+        rate_uses: list[tuple[str, pd.Timestamp, ExchangeRateObservation]] = []
+        for ticker, asset in self.assets.items():
+            source_currency = asset.quote_currency
+            if source_currency is None:
+                msg = f"El activo {ticker} no tiene divisa de cotización conocida."
+                raise ValueError(msg)
+            if source_currency == self.reporting_currency:
+                prices[ticker] = asset.prices.copy()
+                continue
+            converted_values: list[float] = []
+            for date, price in asset.prices.items():
+                asset_date = cast("pd.Timestamp", date)
+                factor, observations = self.exchange_rates.resolve_rate(
+                    source_currency,
+                    self.reporting_currency,
+                    asset_date,
+                )
+                converted_values.append(float(price) * factor)
+                rate_uses.extend((ticker, asset_date, row) for row in observations)
+            prices[ticker] = pd.Series(
+                converted_values,
+                index=asset.prices.index,
+                dtype=float,
+                name=ticker,
+            )
+        return pd.concat(prices, axis=1).sort_index(), rate_uses
+
+    def _get_analysis_prices(self) -> pd.DataFrame:
+        """Return the local or reporting-currency view used by portfolio analytics."""
+        if self.reporting_currency is None:
+            return self.get_prices()
+        return self.get_reporting_prices()
+
+    def currency_conversion_diagnostics(self) -> pd.DataFrame:
+        """Return one trace row per asset date and selected FX rate leg.
+
+        The trace includes pair orientation, provider provenance, the source observation
+        date, calendar age, rate direction and whether the rate was carried forward. Identity
+        conversions are included with a ``-`` pair and ``No requerida`` source.
+
+        Returns:
+            DataFrame containing rate-use trace rows. Currency-free portfolios return an
+            empty frame with the same columns.
+
+        """
+        if self.reporting_currency is None:
+            return pd.DataFrame(columns=list(_CURRENCY_DIAGNOSTIC_COLUMNS))
+        _, rate_uses = self._reporting_prices_and_rate_uses()
+        rows: list[dict[str, object]] = []
+        for ticker, date, observation in rate_uses:
+            rows.append(
+                {
+                    "asset": ticker,
+                    "asset_date": date,
+                    "source_currency": self.assets[ticker].quote_currency,
+                    "reporting_currency": self.reporting_currency,
+                    "pair": observation.pair,
+                    "source": observation.source,
+                    "rate_date": observation.observation_date,
+                    "age_days": observation.age_days,
+                    "rate": observation.rate,
+                    "applied_rate": observation.applied_rate,
+                    "inverted": observation.inverted,
+                    "carried_forward": observation.age_days > 0,
+                }
+            )
+        for ticker, asset in self.assets.items():
+            if asset.quote_currency != self.reporting_currency:
+                continue
+            rows.extend(
+                {
+                    "asset": ticker,
+                    "asset_date": date,
+                    "source_currency": asset.quote_currency,
+                    "reporting_currency": self.reporting_currency,
+                    "pair": "-",
+                    "source": "No requerida",
+                    "rate_date": date,
+                    "age_days": 0,
+                    "rate": 1.0,
+                    "applied_rate": 1.0,
+                    "inverted": False,
+                    "carried_forward": False,
+                }
+                for date in asset.prices.index
+            )
+        diagnostics = pd.DataFrame(rows, columns=list(_CURRENCY_DIAGNOSTIC_COLUMNS))
+        return diagnostics.sort_values(
+            ["asset", "asset_date", "pair"],
+            ignore_index=True,
+        )
 
     def get_returns(self) -> pd.DataFrame:
         """Return daily simple returns on the dates shared by every asset.
@@ -105,7 +284,7 @@ class Portfolio:
             ValueError: If the assets share fewer than two observation dates.
 
         """
-        prices = self.get_prices().dropna(how="any")
+        prices = self._get_analysis_prices().dropna(how="any")
         if len(prices) < MIN_OBSERVATIONS:
             msg = (
                 "Los activos no comparten al menos dos fechas de negociación; "
@@ -146,7 +325,7 @@ class Portfolio:
             the largest gap.
 
         """
-        prices = self.get_prices()
+        prices = self._get_analysis_prices()
         union_dates = len(prices)
         common = prices.dropna(how="any")
         common_dates = len(common)
