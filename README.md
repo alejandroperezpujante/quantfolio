@@ -1,4 +1,4 @@
-# Quantfolio – Taller B1-T1 – MIAX 15
+# Quantfolio: Taller B1-T1 (MIAX 15)
 
 **Quantfolio** es un *toolkit* modular en Python para la extracción multifuente de datos bursátiles, el análisis de
 series de precios y la gestión y simulación de carteras mediante Monte Carlo. Su arquitectura desacopla la capa de
@@ -192,7 +192,7 @@ El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_
 
 ### `Portfolio`
 
-Un **cartera de inversión** es una colección de activos junto con la fracción del capital invertido en cada uno
+Una **cartera de inversión** es una colección de activos junto con la fracción del capital invertido en cada uno
 (las ponderaciones). `Portfolio` la modela como una DataClass de dos diccionarios (`assets` y `weights`) y:
 
 - valida que cada activo tenga ponderación, que las claves coincidan con los tickers y que los pesos sean finitos y
@@ -222,14 +222,14 @@ Las descargas macro (`FredMacroSource`) usan el endpoint de **ALFRED**, el archi
 solicitado sirve los mismos valores que FRED, y cada `MacroSeries` registra en su campo `vintage_date` el vintage del
 que proceden los valores. `get_series(..., as_of="AAAA-MM-DD")` devuelve los valores publicados hasta esa fecha,
 evitando el sesgo anticipado por revisiones y por el retraso de publicación de los indicadores; el parámetro `end`
-de `get_series` es exclusivo, igual que en `PriceSource`. Si ALFRED sirve un vintage distinto del solicitado —por
-ejemplo, cuando recorta una fecha futura hasta su último vintage disponible—, `get_series` lanza un `ValueError` en
-lugar de etiquetar los valores con una fecha a la que no pertenecen.
+de `get_series` es exclusivo, igual que en `PriceSource`. Si ALFRED sirve un vintage distinto del solicitado (por
+ejemplo, cuando recorta una fecha futura hasta su último vintage disponible), `get_series` lanza un `ValueError`
+para no etiquetar los valores con una fecha a la que no pertenecen.
 
 `CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker-saneado>.csv`
 (por ejemplo, `BTC/USD` → `BTC-USD.csv`); el archivo se reutiliza mientras empiece antes de la fecha solicitada
 y su último dato siga vigente (margen configurable con `ttl_days`), y se reemplaza en caso contrario o con
-`refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de modo que dos tickers que sanean al
+`refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de forma que dos tickers que sanean al
 mismo nombre de archivo nunca comparten precios; si la columna no coincide con el ticker pedido, la entrada se
 trata como un fallo de caché. Los CSV escritos por versiones anteriores, sin la columna `ticker`, se aceptan solo
 cuando el ticker no necesita saneado (el nombre del fichero coincide exactamente con el ticker); en caso contrario
@@ -240,7 +240,7 @@ la entrada cuenta como fallo de caché y se regenera.
 `create_price_source_registry()` devuelve un registro inmutable con `yahoo`, `kraken` y, solo tras una validación
 correcta, `alpha-vantage`. Configure la clave como variable de proceso (sin cargador `.env`):
 `export ALPHA_VANTAGE_API_KEY='...'`. Si falta, está agotada o no es válida, se avisa en español y el trabajo sigue
-con las fuentes disponibles; no hay fallback automático.
+con las fuentes disponibles, sin fallback automático.
 
 | Ticker | Semántica diaria |
 |---|---|
@@ -252,7 +252,7 @@ con las fuentes disponibles; no hay fallback automático.
 La procedencia indica `free, raw` o `premium, adjusted` para acciones y `(<plan>, daily)` para el resto. El inicio
 siempre valida la clave con una petición; con caché fresca usa una petición, y sin ella dos en free o tres en premium.
 Las capacidades se almacenan 24 horas en `data/alpha-vantage/capabilities/` con una huella SHA-256. Una denegación
-posterior rebaja el plan o deshabilita solo índices, sin reintento ni datos de menor frecuencia.
+posterior rebaja el plan o deshabilita solo índices; no reintenta la petición ni pide datos de menor frecuencia.
 
 ## Limpieza y alineación temporal
 
@@ -266,21 +266,20 @@ posterior rebaja el plan o deshabilita solo índices, sin reintento ni datos de 
 
 ## Validación de entradas (análisis y justificación)
 
-El toolkit **restringe** los inputs en lugar de admitir cualquier objeto con aspecto de serie temporal, por tres
-razones:
+El toolkit **restringe** los inputs por tres razones:
 
 1. **Corrección analítica**: métricas como la rentabilidad logarítmica o la volatilidad dejan de ser válidas con
    precios negativos o nulos, y las covarianzas de cartera son falsas si los calendarios no están alineados.
-   Aceptar esos datos produce resultados silenciosamente incorrectos, el peor fallo posible en un contexto
-   cuantitativo.
+   Aceptar esos datos produce resultados incorrectos que nadie detecta.
 2. **Detección temprana de errores**: validar en el constructor (ticker vacío, `pandas.Series` incorrecta, índice
    que no es `DatetimeIndex`, claves y pesos incoherentes, parámetros fuera de rango) convierte errores de datos en
-   excepciones inmediatas con mensajes claros en español, en lugar de fallos lejanos y opacos.
+   excepciones inmediatas con mensajes claros en español; sin esa validación, el fallo aparece más tarde y es
+   difícil de rastrear.
 3. **Homogeneidad**: las restricciones definen el contrato interno (`PriceSeries`) que todos los proveedores
    cumplen, y son la base de la interoperabilidad entre APIs que pide el enunciado.
 
 El coste asumido es que no se admiten series atípicas (p. ej. valores negativos, propios de precios de energía en
-algunos mercados) — una limitación consciente y documentada en lugar de un comportamiento accidental.
+algunos mercados); la limitación es consciente y está documentada.
 
 Los validadores compartidos viven en `quantfolio.validation`: la cartera, la serie de precios, el motor de
 simulación y las medidas de riesgo los importan desde un único módulo, de modo que la misma entrada inválida
@@ -323,9 +322,9 @@ natural.
 
 - `Portfolio.report()` genera el informe Markdown parametrizable: composición, métricas históricas, calidad de los
   datos y advertencias de riesgo, con opciones `periods_per_year`, `include_quality`, `include_warnings`,
-  `risk_free_rate` y `confidence`. Las advertencias se derivan del estado real de la cartera (cobertura de
+  `risk_free_rate` y `confidence`. Las advertencias se derivan del estado real de la cartera: cobertura de
   alineación, volatilidad elevada, caída profunda, concentración superior al 50 %, intervalos de varios días e
-  historia corta), no de supuestos fijos.
+  historia corta.
 - El informe incluye, además de la composición y las métricas básicas, la máxima caída
   histórica, el ratio de Sharpe, el VaR y el CVaR históricos al 95 %, la rentabilidad geométrica
   (CAGR), la deriva del logaritmo usada por Monte Carlo y el error estándar de la rentabilidad
@@ -354,15 +353,14 @@ uv run pre-commit run --all-files  # quinta puerta, local (incluye hooks de higi
 
 La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y cubre validaciones,
 limpieza, alineación, caché, simulaciones y generación de informes. GitHub Actions repite cuatro de los cinco
-controles —todos salvo `pre-commit`, que es una puerta local— en cada *pull request* y en cada `push` a `main`
-(flujo [`ci.yml`](.github/workflows/ci.yml)) y
-publica la evidencia de cada ejecución: un resumen en la página del *run* y el artefacto `test-report` con
-`coverage.xml`, `junit.xml` y `test-summary.json`. En los *pull requests* se añade además un comentario con la
-evidencia consolidada de las pruebas y del análisis de calidad. La rama `main` está protegida: los `push`
-directos están rechazados —también para la administración—, toda contribución llega mediante un *pull request*
-y sus dos comprobaciones obligatorias, `Quality gates` y `Strict analysis`, deben pasar sobre la revisión
-exacta que se fusiona. No se exige revisión aprobatoria, así que cada autor puede fusionar su propio *pull
-request* una vez que ambas comprobaciones están en verde.
+controles (todos salvo `pre-commit`, que es una puerta local) en cada *pull request* y en cada `push` a `main`
+(flujo [`ci.yml`](.github/workflows/ci.yml)) y publica la evidencia de cada ejecución: un resumen en la página
+del *run* y el artefacto `test-report` con `coverage.xml`, `junit.xml` y `test-summary.json`. En los *pull
+requests* se añade un comentario con la evidencia consolidada de las pruebas y del análisis de calidad. La rama
+`main` está protegida: los `push` directos están rechazados (también para la administración), toda contribución
+llega mediante un *pull request* y sus dos comprobaciones obligatorias, `Quality gates` y `Strict analysis`,
+deben pasar sobre la revisión exacta que se fusiona. No se exige revisión aprobatoria, así que cada autor puede
+fusionar su propio *pull request* una vez que ambas comprobaciones están en verde.
 
 ### Análisis estático con SonarQube
 
@@ -373,7 +371,7 @@ ramas, 0 % de duplicación y calificaciones A/A/A, tanto en el código total com
 excepción documentada es `python:S1722` («New-style classes should be used»), una regla heredada de Python 2 que
 no aplica a Python 3 y que está desactivada en el perfil. La regla `ipython:S113` («Files should end with a
 newline») está además excluida para los cuadernos: `ruff format`, obligatorio en los hooks de pre-commit,
-normaliza el código de cada celda sin salto de línea final, de modo que la regla no puede satisfacerse en un
+normaliza el código de cada celda sin salto de línea final, por lo que la regla no puede satisfacerse en un
 cuaderno formateado; la exclusión está declarada en `sonar-project.properties`.
 
 ```console
@@ -391,7 +389,7 @@ El flujo [`ci.yml`](.github/workflows/ci.yml) se ejecuta en cada *pull request* 
 trabajo `Quality gates` ejecuta cuatro de las cinco puertas locales (todas salvo `pre-commit`) y publica el
 artefacto `test-report` (`coverage.xml`, `junit.xml` y `test-summary.json`); a continuación se invoca el flujo
 reutilizable [`sonarqube.yml`](.github/workflows/sonarqube.yml), que descarga esos informes, analiza exactamente
-la revisión validada —la fusión del *pull request* o el `push` a `main`— con `fetch-depth: 0` y registra esa
+la revisión validada (la fusión del *pull request* o el `push` a `main`) con `fetch-depth: 0` y registra esa
 revisión en el análisis (`sonar.scm.revision`). Como el flujo del *pull request* solo ejecuta código de las
 ramas del propio repositorio, las credenciales nunca se exponen a código de terceros.
 
@@ -407,28 +405,22 @@ servicio `svc:sonar` en el puerto 443. En GitHub, el repositorio necesita estos 
 | `SONAR_TOKEN` | secreto | token de análisis del proyecto `quantfolio` |
 | `SONAR_HOST_URL` | variable | URL tailnet de SonarQube (`https://sonar.<tailnet>.ts.net`) |
 
-Los tres secretos deben existir además como secretos de Dependabot, de modo que sus *pull requests* también
+Los tres secretos deben existir además como secretos de Dependabot, para que sus *pull requests* también
 pasen el análisis. Cuando el *quality gate* no está en verde, el paso del escáner falla (por
 `sonar.qualitygate.wait=true`) y el flujo queda en rojo.
 
 ### Evidencia de cada ejecución
-
-Cada ejecución deja rastro verificable de qué se comprobó y sobre qué revisión:
 
 - **Resumen del *run***: el trabajo de pruebas publica commit, cobertura y desglose de la suite; el análisis
   publica el estado del *quality gate* con todas sus condiciones, las incidencias abiertas por regla y fichero,
   la cobertura, la duplicación y la tarea de proceso (identificador del análisis y enlace al *dashboard*).
 - **Artefactos descargables**: `test-report` (`coverage.xml`, `junit.xml`, `test-summary.json`) y `sonar-report`
   (`report-task.txt` y `gate-summary.json`), enlazados desde la página del *run*.
-- **Comentario en el *pull request***: un comentario se actualiza con la evidencia consolidada —commit, estado de
-  ambas comprobaciones, cobertura, recuento de pruebas, estado del *quality gate* y enlace al *dashboard*— cada
+- **Comentario en el *pull request***: un comentario se actualiza con la evidencia consolidada (commit, estado de
+  ambas comprobaciones, cobertura, recuento de pruebas, estado del *quality gate* y enlace al *dashboard*) cada
   vez que se publica una revisión nueva.
 - **Análisis indexado en SonarQube**: el informe JUnit queda registrado en el servidor (`sonar.python.xunit.reportPath`),
   junto a la cobertura y a la revisión exacta analizada.
-
-La protección de la rama `main` exige que `Quality gates` y `Strict analysis` terminen en verde sobre la revisión
-que se va a fusionar; el creador del *pull request* puede fusionarlo él mismo porque no se exige revisión
-aprobatoria.
 
 ## Limitaciones y advertencias
 
@@ -436,7 +428,7 @@ aprobatoria.
   comparaciones sean monetariamente homogéneas. Mezclar activos en otras monedas sigue siendo responsabilidad de
   quien construye la cartera.
 - Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
-  `KrakenSource` lanza un error explicativo en lugar de devolver una serie truncada. Para recuperar el cuaderno,
+  `KrakenSource` lanza un error explicativo y no devuelve una serie truncada. Para recuperar el cuaderno,
   adelanta `START` a una fecha concreta dentro de los últimos ~700 días (por ejemplo `2026-01-02`) y mantén la
   misma fecha en los demás cuadernos para conservar la comparabilidad.
 - La descarga por lotes de `get_many()` es secuencial, no concurrente.
