@@ -377,7 +377,13 @@ class AlphaVantageSource(PriceSource):
                 "para las fechas solicitadas."
             )
             raise ValueError(msg)
-        quote_currency = route.parameters["to_symbol"] if route.family is _Family.FX else None
+        quote_currency = None
+        if route.family is _Family.FX:
+            quote_currency = route.parameters["to_symbol"]
+        elif route.family is _Family.CRYPTO:
+            market = route.parameters["market"]
+            if re.fullmatch(r"[A-Z]{3}", market):
+                quote_currency = market
         return PriceSeries(
             ticker=symbol,
             prices=window,

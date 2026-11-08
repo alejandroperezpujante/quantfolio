@@ -122,7 +122,10 @@ class Portfolio:
             ]
             if unknown:
                 tickers = ", ".join(unknown)
-                msg = f"Cada activo necesita una divisa de cotización conocida: {tickers}."
+                msg = (
+                    f"Cada activo necesita una divisa de cotización conocida: {tickers}. "
+                    "Indica quote_currency manualmente o actualiza la caché."
+                )
                 raise ValueError(msg)
             return
 

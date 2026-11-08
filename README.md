@@ -196,7 +196,7 @@ DataClass que representa una serie temporal de precios con sus metadatos (`ticke
 - calcula automáticamente `mean_price` (media) y `std_price` (desviación típica muestral), como exige el enunciado.
 - puede registrar `quote_currency` y `quote_unit`. Acepta códigos ISO de tres letras; normaliza GBX/GBp a GBP,
   ILA a ILS y ZAc a ZAR multiplicando los precios por 0,01, y conserva la unidad original para su trazabilidad.
-  La divisa nunca se deduce del ticker.
+  Yahoo obtiene la unidad desde sus metadatos; Kraken y Alpha Vantage reconocen la divisa de pares explícitos. Si no se conoce, proporciona la divisa manualmente. La caché antigua puede requerir `refresh=True`.
 
 El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_volatility`,
 `annualized_return_approx`, `annualized_volatility`, `max_drawdown` y `sharpe_ratio`.
@@ -452,9 +452,8 @@ pasen el análisis. Cuando el *quality gate* no está en verde, el paso del esc�
 
 ## Limitaciones y advertencias
 
-- La biblioteca **no convierte divisas**: los ejemplos usan activos denominados en USD para que las
-  comparaciones sean monetariamente homogéneas. Mezclar activos en otras monedas sigue siendo responsabilidad de
-  quien construye la cartera.
+- La conversión de divisas requiere una divisa de reporte, cotizaciones conocidas y tipos de cambio históricos suministrados por la persona usuaria.
+
 - Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
   `KrakenSource` lanza un error explicativo y no devuelve una serie truncada. Para recuperar el cuaderno,
   adelanta `START` a una fecha concreta dentro de los últimos ~700 días (por ejemplo `2026-01-02`) y mantén la

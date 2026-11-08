@@ -1,12 +1,15 @@
 """Tests for the market-data sources."""
 
 import json
+from collections import UserDict
 from typing import TYPE_CHECKING, Self, cast
 
 import pandas as pd
 import pytest
 
+from quantfolio.currency import ExchangeRates
 from quantfolio.models import PriceSeries
+from quantfolio.portfolio import Portfolio
 from quantfolio.sources.base import DateLike, PriceSource, naive_timestamp, validate_ticker
 from quantfolio.sources.cache import CachedPriceSource
 from quantfolio.sources.kraken import KrakenSource
@@ -725,3 +728,144 @@ def test_legacy_cache_files_have_unknown_currency_metadata(
     assert upstream.calls == 0
     assert asset.quote_currency is None
     assert asset.quote_unit is None
+
+
+def test_yahoo_uses_provider_quote_unit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provider quote units are normalized along with downloaded prices."""
+    monkeypatch.setattr(
+        "quantfolio.sources.yahoo.yf.download", lambda *_args, **_kwargs: _price_frame()
+    )
+
+    class Ticker:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+
+        def get_history_metadata(self) -> dict[str, str]:
+            return {"currency": "GBp"}
+
+    monkeypatch.setattr("quantfolio.sources.yahoo.yf.Ticker", Ticker)
+    asset = YahooFinanceSource().get_prices("VOD.L", "2025-01-02")
+    assert asset.quote_currency == "GBP"
+    assert asset.quote_unit == "GBp"
+    assert list(asset.prices) == pytest.approx([0.1, 0.11, 0.12])
+
+
+def test_kraken_explicit_pair_supplies_currency(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The quote side of an explicit market pair labels prices."""
+    monkeypatch.setattr(
+        "quantfolio.sources.kraken.urlopen",
+        lambda *_args, **_kwargs: _FakeResponse(_kraken_payload()),
+    )
+    asset = KrakenSource().get_prices("BTC/USD", "2025-01-02")
+    assert asset.quote_currency == "USD"
+
+
+def test_yahoo_missing_or_invalid_metadata_is_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A metadata failure does not silently assign a currency."""
+    monkeypatch.setattr(
+        "quantfolio.sources.yahoo.yf.download", lambda *_args, **_kwargs: _price_frame()
+    )
+
+    class Ticker:
+        def __init__(self, _symbol: str) -> None:
+            pass
+
+        def get_history_metadata(self) -> dict[str, str]:
+            return {"currency": "invalid"}
+
+    monkeypatch.setattr("quantfolio.sources.yahoo.yf.Ticker", Ticker)
+    assert YahooFinanceSource().get_prices("AAA", "2025-01-02").quote_currency is None
+
+
+def test_kraken_compact_pair_uses_market_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Compact pair names use the provider's market metadata."""
+
+    def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        if "AssetPairs" in url:
+            return _FakeResponse({"error": [], "result": {"XXBTZUSD": {"wsname": "XBT/USD"}}})
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+    assert KrakenSource().get_prices("XBTUSD", "2025-01-02").quote_currency == "USD"
+
+
+def test_provider_currencies_drive_cached_portfolio_conversion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Cached provider assets convert using their own quote currencies."""
+    monkeypatch.setattr(
+        "quantfolio.sources.yahoo.yf.download", lambda *_args, **_kwargs: _price_frame()
+    )
+
+    class Ticker:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+
+        def get_history_metadata(self) -> dict[str, str]:
+            return {"currency": "EUR" if self.symbol == "EU" else "USD"}
+
+    monkeypatch.setattr("quantfolio.sources.yahoo.yf.Ticker", Ticker)
+    cached = CachedPriceSource(YahooFinanceSource(), cache_dir=tmp_path)
+    for symbol in ("EU", "US"):
+        cached.get_prices(symbol, "2025-01-02", "2025-01-07")
+    assets = {
+        symbol: cached.get_prices(symbol, "2025-01-02", "2025-01-07") for symbol in ("EU", "US")
+    }
+    rates = PriceSeries(
+        "FX:USD/EUR", pd.Series([0.9, 0.9, 0.9], index=TRADING_DATES[:3]), quote_currency="EUR"
+    )
+    portfolio = Portfolio(
+        assets=assets,
+        weights={"EU": 0.5, "US": 0.5},
+        reporting_currency="EUR",
+        exchange_rates=ExchangeRates([rates]),
+    )
+    assert list(portfolio.get_reporting_prices()["US"]) == pytest.approx([9.0, 9.9, 10.8])
+    assert list(portfolio.get_reporting_prices()["EU"]) == [10.0, 11.0, 12.0]
+
+
+def test_kraken_unavailable_market_metadata_remains_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing metadata response does not prevent the price download."""
+
+    def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        if "AssetPairs" in url:
+            msg = "metadata unavailable"
+            raise OSError(msg)
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+    assert KrakenSource().get_prices("XBTUSD", "2025-01-02").quote_currency is None
+
+
+def test_kraken_market_without_pair_name_remains_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Malformed market metadata cannot supply a quote currency."""
+
+    def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        if "AssetPairs" in url:
+            return _FakeResponse({"error": [], "result": {"XXBTZUSD": {}}})
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+    assert KrakenSource().get_prices("XBTUSD", "2025-01-02").quote_currency is None
+
+
+def test_yahoo_accepts_mapping_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Yahoo metadata can be a mapping rather than a plain dictionary."""
+    monkeypatch.setattr(
+        "quantfolio.sources.yahoo.yf.download", lambda *_args, **_kwargs: _price_frame()
+    )
+
+    class Ticker:
+        def __init__(self, _symbol: str) -> None:
+            pass
+
+        def get_history_metadata(self) -> UserDict[str, str]:
+            return UserDict({"currency": "EUR"})
+
+    monkeypatch.setattr("quantfolio.sources.yahoo.yf.Ticker", Ticker)
+    assert YahooFinanceSource().get_prices("SAN.MC", "2025-01-02").quote_currency == "EUR"

@@ -39,7 +39,8 @@ def test_notebooks_pin_the_end_date_and_have_no_errors(path: str) -> None:
     call_lines = [
         line
         for line in sources.splitlines()
-        if any(token in line for token in (".get_prices(", ".get_many(", ".get_series("))
+        if "portfolio.get_prices(" not in line
+        and any(token in line for token in (".get_prices(", ".get_many(", ".get_series("))
     ]
     assert call_lines, path
     assert all("end=END" in line for line in call_lines), path

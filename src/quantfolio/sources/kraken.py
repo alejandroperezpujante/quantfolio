@@ -1,6 +1,7 @@
 """Kraken public market-data source."""
 
 import json
+import re
 from typing import TYPE_CHECKING, cast
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -33,6 +34,28 @@ def _to_pair(ticker: str) -> str:
     if pair.startswith("BTC"):
         pair = f"XBT{pair[3:]}"
     return pair
+
+
+def _quote_from_market(symbol: str, pair: str) -> str | None:
+    """Resolve explicit or compact pairs without guessing their quote asset."""
+    match = re.fullmatch(r"[^/]+/([A-Z]{3})", symbol.upper())
+    if match:
+        return match.group(1)
+    quote = None
+    try:
+        url = f"https://api.kraken.com/0/public/AssetPairs?{urlencode({'pair': pair})}"
+        with urlopen(url, timeout=HTTP_TIMEOUT) as response:
+            payload = json.load(response)
+        result = payload.get("result", {})
+        if not payload.get("error") and isinstance(result, dict) and len(result) == 1:
+            market = next(iter(result.values()))
+            name = market.get("wsname") if isinstance(market, dict) else None
+            if isinstance(name, str):
+                match = re.fullmatch(r"[^/]+/([A-Z]{3})", name.upper())
+                quote = match.group(1) if match else None
+    except OSError, ValueError, TypeError, AttributeError:
+        pass
+    return quote
 
 
 def _fetch_candles(url: str, symbol: str) -> list[list[object]]:
@@ -148,4 +171,5 @@ class KrakenSource(PriceSource):
             msg = f"No se han encontrado datos para {symbol} en Kraken."
             raise ValueError(msg)
         _ensure_retention_covers_start(symbol, asset.prices, start_stamp)
-        return PriceSeries(ticker=symbol, prices=window, source=self.name)
+        quote = _quote_from_market(symbol, pair)
+        return PriceSeries(ticker=symbol, prices=window, source=self.name, quote_currency=quote)
