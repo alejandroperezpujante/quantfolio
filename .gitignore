@@ -37,3 +37,7 @@ data/
 
 # IDE
 .idea/
+
+# Dev Container host-specific Git worktree mount and local credentials
+.devcontainer/compose.git-worktree.yaml
+.devcontainer/sonar.env
