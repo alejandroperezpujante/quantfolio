@@ -71,3 +71,16 @@ def test_multi_currency_notebook_demonstrates_ecb_and_manual_rates() -> None:
     assert ".pct_change()" in sources
     assert 'END = "2026-11-06"' in sources
     assert any(cell.get("outputs") for cell in code_cells)
+
+
+def test_unified_demo_uses_auto_portfolio() -> None:
+    """The unified demo delegates portfolio setup to AutoPortfolio."""
+    path = ROOT / "notebooks/quantfolio_demo.ipynb"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    sources = "\n".join(
+        "".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code"
+    )
+    assert "AutoPortfolio(" in sources
+    assert "AutoPortfolioConfig(" in sources
+    assert 'reporting_currency="EUR"' in sources
+    assert "ExchangeRates.from_source(" not in sources
