@@ -124,33 +124,35 @@ porque su calendario cotiza todos los días; el resto usa 252 sesiones.
 ### Ejemplo mínimo
 
 ```python
-from quantfolio import (
-    CachedPriceSource,
-    KrakenSource,
-    MonteCarloParameters,
-    Portfolio,
-    YahooFinanceSource,
+from quantfolio import AutoPortfolio, AutoPortfolioConfig, MonteCarloParameters
+
+portfolio = AutoPortfolio(
+    AutoPortfolioConfig(
+        weights={"AAPL": 0.35, "SPY": 0.30, "IEF": 0.25, "BTC/USD": 0.10},
+        start="2025-01-02",
+    )
 )
-
-yahoo = CachedPriceSource(YahooFinanceSource(), cache_dir="data")
-kraken = KrakenSource()
-assets = {
-    **yahoo.get_many(["AAPL", "SPY", "IEF"], start="2025-01-02"),
-    **kraken.get_many(["BTC/USD"], start="2025-01-02"),
-}
-portfolio = Portfolio(
-    assets=assets,
-    weights={"AAPL": 0.35, "SPY": 0.30, "IEF": 0.25, "BTC/USD": 0.10},
-)
-
-print(portfolio.report())  # informe Markdown
-portfolio.plots_report()  # panel analítico de gráficos
-
+print(portfolio.report())
+portfolio.plots_report()
 simulations = portfolio.simulate_monte_carlo(
     MonteCarloParameters(n_paths=1_000, horizon=252, seed=42)
 )
 portfolio.plot_simulation(simulations)
 ```
+
+`AutoPortfolio` obtiene los datos durante la construcción. Por defecto utiliza Yahoo para símbolos
+ordinarios, Kraken para pares como `BTC/USD` y la caché CSV en `data/`. Si hay un proveedor alternativo
+compatible, lo prueba con un aviso: los precios pueden tener ajustes o mercados distintos. Alpha Vantage
+no comunica la divisa de sus acciones; si se utiliza como alternativa, indícala en `quote_currencies`.
+Las carteras con varias divisas requieren `reporting_currency`; el BCE aporta automáticamente los tipos
+EUR-first necesarios, con siete días de margen inicial y una antigüedad máxima de cuatro días.
+
+`AutoPortfolioConfig` admite `sources`, `provider_priorities` (familias `equity`, `crypto`, `index`,
+`prefixed`), `ticker_priorities`, `provider_symbols` y `quote_currencies` para personalizar la ingesta.
+También permite configurar `cache_enabled`, `cache_dir`, `cache_ttl_days`, `cache_refresh`, `fx_source`,
+`exchange_rates`, `fx_lookback_days` y `fx_max_age_days`. Las prioridades por ticker tienen precedencia
+sobre las de familia. Las divisas indicadas manualmente completan metadatos ausentes, pero no cambian una
+divisa conocida; usa `reporting_currency` para convertir precios. `end` es exclusivo.
 
 ## Estructura del proyecto
 
@@ -160,6 +162,7 @@ portfolio.plot_simulation(simulations)
 │   ├── __init__.py          # API pública
 │   ├── constants.py         # constantes compartidas
 │   ├── models.py            # PriceSeries y limpieza numérica
+│   ├── auto_portfolio.py    # configuración e ingesta automática de carteras
 │   ├── portfolio.py         # Portfolio: pesos, alineación, métricas, informes y Monte Carlo
 │   ├── simulation.py        # motor GBM y MonteCarloParameters
 │   ├── risk.py              # medidas puras de riesgo: drawdown, Sharpe, CAGR, VaR y CVaR

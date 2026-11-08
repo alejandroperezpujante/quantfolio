@@ -24,6 +24,10 @@ classDiagram
         +plot_simulation(simulations, max_paths) None
     }
 
+    class AutoPortfolio {
+        +AutoPortfolio(config)
+    }
+
     class Portfolio {
         +dict~str, PriceSeries~ assets
         +dict~str, float~ weights
@@ -140,6 +144,8 @@ classDiagram
         +plot_simulation_paths(simulations, max_paths, value_label, final_label) None
     }
 
+    AutoPortfolio --|> Portfolio
+    AutoPortfolio ..> PriceSource : obtiene datos
     Portfolio o-- "1..*" PriceSeries : agrega
     Portfolio o-- ExchangeRates : convierte a divisa de reporte
     ExchangeRates ..> ExchangeRateObservation : registra
@@ -233,6 +239,7 @@ cuatro clases en una cartera diversificada.
 |---|---|
 | `quantfolio.models` | `PriceSeries` (limpieza, estadísticos y metadatos de cotización) y utilidades numéricas. |
 | `quantfolio.currency` | `ExchangeRates`: selección directa, inversa o cruzada de tipos históricos y trazabilidad de conversiones. |
+| `quantfolio.auto_portfolio` | Construcción automática, selección de proveedores, caché y tipos de cambio. |
 | `quantfolio.portfolio` | `Portfolio`: validación de pesos, alineación temporal, precios de reporte, métricas, informe y Monte Carlo. |
 | `quantfolio.risk` | Medidas de riesgo puras: drawdown, Sharpe, CAGR, error estándar de la deriva y VaR/CVaR históricos. |
 | `quantfolio.validation` | Validadores de entrada compartidos (periodos, confianza, tasa libre de riesgo y rentabilidades). |

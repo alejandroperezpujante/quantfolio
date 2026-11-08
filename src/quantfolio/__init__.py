@@ -1,5 +1,6 @@
 """Quantfolio: multi-source market data, price analysis and portfolio management."""
 
+from quantfolio.auto_portfolio import AutoPortfolio, AutoPortfolioConfig
 from quantfolio.constants import TRADING_DAYS_PER_YEAR
 from quantfolio.currency import ExchangeRateObservation, ExchangeRates
 from quantfolio.macro import FredMacroSource, MacroSeries
@@ -30,6 +31,8 @@ __all__ = [
     "TRADING_DAYS_PER_YEAR",
     "AlphaVantagePlan",
     "AlphaVantageSource",
+    "AutoPortfolio",
+    "AutoPortfolioConfig",
     "CachedPriceSource",
     "ECBExchangeRateSource",
     "ExchangeRateObservation",
