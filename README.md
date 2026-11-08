@@ -56,7 +56,7 @@ in Container** desde la paleta de comandos. La primera creación construye la im
 los siguientes arranques reutilizan la imagen y los volúmenes del servidor.
 
 Las herramientas `ruff`, `mypy` y `pre-commit` quedan instaladas y disponibles directamente en el `PATH`.
-El entorno del proyecto se encuentra en `/home/vscode/quantfolio-venv`; `uv sync --frozen` lo actualiza
+El entorno del proyecto se encuentra en `/home/developer/quantfolio-venv`; `uv sync --frozen` lo actualiza
 según `uv.lock` sin volver a resolver versiones. Ejecuta las comprobaciones habituales con:
 
 ```console
