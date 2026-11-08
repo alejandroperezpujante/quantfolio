@@ -278,7 +278,7 @@ class _Assembler:
             source = CachedPriceSource(
                 source,
                 cache_dir=self.config.cache_dir,
-                ttl_days=self.config.cache_ttl_days,
+                ttl_days=min(self.config.cache_ttl_days, self.config.fx_max_age_days),
                 refresh=self.config.cache_refresh,
             )
         start = (

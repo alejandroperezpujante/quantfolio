@@ -449,6 +449,25 @@ def test_registry_and_cached_fx_defaults(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(fx.calls) == 1
 
 
+def test_stale_fx_cache_is_refreshed_for_new_asset(tmp_path: Path) -> None:
+    """An old FX cache must not prevent conversion of newer asset prices."""
+    yahoo = MemorySource("Yahoo", {"AAA": "USD"})
+    fx = MemorySource("FX", {"FX:EUR/USD": "USD"})
+    CachedPriceSource(fx, cache_dir=tmp_path).get_prices("FX:EUR/USD", "2024-12-26", "2025-01-04")
+    portfolio = AutoPortfolio(
+        AutoPortfolioConfig(
+            weights={"AAA": 1},
+            start="2025-01-02",
+            end="2025-01-10",
+            reporting_currency="EUR",
+            sources={"yahoo": yahoo},
+            fx_source=fx,
+            cache_dir=tmp_path,
+        )
+    )
+    assert portfolio.get_reporting_prices().index.max() == pd.Timestamp("2025-01-09")
+
+
 def test_same_currency_does_not_fetch_rates() -> None:
     """A reporting currency equal to every asset needs no FX provider."""
     source = MemorySource("Yahoo", {"AAA": "USD"})
