@@ -1,5 +1,8 @@
 """Portfolio model aggregating price series with weights."""
 
+from __future__ import annotations
+
+import calendar
 import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
@@ -30,6 +33,7 @@ from quantfolio.simulation import (
 from quantfolio.validation import validate_periods_per_year, validate_returns
 
 if TYPE_CHECKING:
+    from quantfolio.macro import MacroSeries
     from quantfolio.models import PriceSeries
 
 
@@ -412,6 +416,100 @@ class Portfolio:
         weighted.name = "portfolio"
         return cast("pd.Series[float]", weighted)
 
+    def monthly_inflation_comparison(self, inflation_index: MacroSeries) -> pd.DataFrame:
+        """Pair complete nominal and real monthly returns over CPI reference months.
+
+        Args:
+            inflation_index: Monthly price-index levels chosen by the caller.
+
+        Returns:
+            DataFrame with ``nominal`` and ``real`` columns on month-end dates.
+
+        Raises:
+            ValueError: If the reporting currency or index levels are invalid, months
+                are duplicated or absent, or no return can be paired with CPI.
+
+        """
+        if self.reporting_currency is None:
+            msg = "Debes indicar una divisa de reporte para calcular rentabilidades reales."
+            raise ValueError(msg)
+        levels = inflation_index.index_levels
+        if (levels <= 0).any():
+            msg = "Los niveles del índice de inflación deben ser positivos."
+            raise ValueError(msg)
+        reference_months = pd.DatetimeIndex(levels.index).to_period("M")
+        if inflation_index.duplicate_observation_dates or reference_months.has_duplicates:
+            msg = "El índice de inflación contiene meses de referencia duplicados."
+            raise ValueError(msg)
+        if len(reference_months) != reference_months[-1].ordinal - reference_months[0].ordinal + 1:
+            msg = "En el índice de inflación faltan meses de referencia interiores."
+            raise ValueError(msg)
+        monthly_levels = pd.Series(levels.to_numpy(), index=reference_months, dtype=float)
+        returns = self.portfolio_returns()
+        common_dates = pd.DatetimeIndex(self.get_prices().dropna(how="any").index)
+        observed_months = common_dates.to_period("M")
+        price_months = observed_months.unique()
+        if len(price_months) != price_months[-1].ordinal - price_months[0].ordinal + 1:
+            msg = "En las rentabilidades de la cartera faltan meses interiores."
+            raise ValueError(msg)
+        weekend_prices = bool((common_dates.day_of_week >= calendar.SATURDAY).any())
+        complete_months: set[pd.Period] = set()
+        for month in price_months:
+            calendar_end = month.to_timestamp(how="end").normalize()
+            required_end = (
+                calendar_end
+                if weekend_prices
+                else pd.Timestamp(pd.offsets.BMonthEnd().rollback(calendar_end))
+            )
+            if common_dates[observed_months == month][-1] >= required_end:
+                complete_months.add(month)
+        if any(month not in complete_months for month in price_months[1:-1]):
+            msg = "La cartera contiene meses interiores incompletos."
+            raise ValueError(msg)
+        eligible_months = pd.PeriodIndex(
+            [
+                month
+                for month in price_months[1:]
+                if month in complete_months and month - 1 in complete_months
+            ]
+        )
+        portfolio_months = pd.DatetimeIndex(returns.index).to_period("M")
+        nominal = (1.0 + returns).groupby(portfolio_months).prod() - 1.0
+        covered_months = pd.PeriodIndex(
+            nominal.index.intersection(reference_months[1:]).intersection(eligible_months)
+        )
+        if covered_months.empty:
+            msg = "No hay coincidencia suficiente entre la cartera y el índice de inflación."
+            raise ValueError(msg)
+        cpi_change = monthly_levels.div(monthly_levels.shift(1)).loc[covered_months]
+        matched_nominal = nominal.loc[covered_months]
+        real = (1.0 + matched_nominal).div(cpi_change) - 1.0
+        month_ends = covered_months.to_timestamp(how="end").normalize()
+        return pd.DataFrame(
+            {"nominal": matched_nominal.to_numpy(), "real": real.to_numpy()},
+            index=month_ends,
+        )
+
+    def real_monthly_returns(self, inflation_index: MacroSeries) -> pd.Series[float]:
+        """Return monthly purchasing-power returns for available CPI reference months.
+
+        Args:
+            inflation_index: Caller-chosen monthly price-index levels in the reporting
+                currency's economy; annual inflation rates are not valid inputs.
+
+        Returns:
+            Month-end-labelled real returns. Partial boundary months and the latest
+            portfolio months without CPI observations are omitted.
+
+        Raises:
+            ValueError: If the reporting currency is unset, CPI levels or monthly
+                coverage are invalid, or no monthly return can be paired with CPI.
+
+        """
+        real = self.monthly_inflation_comparison(inflation_index)["real"]
+        real.name = "real_monthly_return"
+        return cast("pd.Series[float]", real)
+
     def summary(self, *, periods_per_year: int = TRADING_DAYS_PER_YEAR) -> dict[str, float]:
         """Return the historical return and volatility statistics of the portfolio.
 
@@ -524,6 +622,46 @@ class Portfolio:
         )
         return paths_to_frame(paths)
 
+    def simulate_real_monte_carlo(
+        self,
+        parameters: MonteCarloParameters | None = None,
+        *,
+        annual_inflation_rate: float,
+    ) -> pd.DataFrame:
+        """Express nominal Monte Carlo paths in fixed-inflation purchasing-power units.
+
+        Args:
+            parameters: Nominal simulation settings, including the random seed.
+            annual_inflation_rate: Constant annual inflation assumption as a fraction.
+
+        Returns:
+            The nominal paths divided at step ``t`` by
+            ``(1 + annual_inflation_rate) ** (t / periods_per_year)``.
+
+        Raises:
+            ValueError: If the inflation rate is non-finite or at most minus one, or
+                nominal simulation parameters are invalid.
+
+        """
+        if not math.isfinite(annual_inflation_rate) or annual_inflation_rate <= -1.0:
+            msg = "La tasa de inflación anual debe ser finita y mayor que -100 %."
+            raise ValueError(msg)
+        settings = parameters if parameters is not None else MonteCarloParameters()
+        nominal = self.simulate_monte_carlo(settings)
+        factors = pd.Series(
+            [
+                (1.0 + annual_inflation_rate) ** (step / settings.periods_per_year)
+                for step in nominal.index
+            ],
+            index=nominal.index,
+            dtype=float,
+        )
+        real = nominal.div(factors, axis=0)
+        real.attrs["scenario"] = (
+            f"Poder adquisitivo con inflación fija anual de {annual_inflation_rate:.2%}"
+        )
+        return real
+
     @staticmethod
     def plot_simulation(simulations: pd.DataFrame, *, max_paths: int = 100) -> None:
         """Display simulated trajectories and the distribution of final values.
@@ -543,6 +681,7 @@ class Portfolio:
         include_warnings: bool = True,
         risk_free_rate: float = 0.0,
         confidence: float = 0.95,
+        inflation_index: MacroSeries | None = None,
     ) -> str:
         """Render the portfolio report as structured Markdown.
 
@@ -556,6 +695,8 @@ class Portfolio:
             include_warnings: Whether to include the risk-warnings section.
             risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
             confidence: Confidence level of the value-at-risk measures.
+            inflation_index: Optional caller-supplied monthly price-index levels for a
+                paired nominal and purchasing-power comparison.
 
         Returns:
             Markdown text with composition, metrics, diagnostics and risk warnings.
@@ -573,6 +714,7 @@ class Portfolio:
             include_warnings=include_warnings,
             risk_free_rate=risk_free_rate,
             confidence=confidence,
+            inflation_index=inflation_index,
         )
 
     def plots_report(self) -> None:

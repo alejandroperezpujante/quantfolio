@@ -1,7 +1,7 @@
 """Markdown reports and analytical plots for portfolios and simulations."""
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import matplotlib.pyplot as plt
 
@@ -10,6 +10,7 @@ from quantfolio.constants import (
     CONCENTRATION_WARNING_THRESHOLD,
     DRAWDOWN_WARNING_THRESHOLD,
     HIGH_VOLATILITY_WARNING_THRESHOLD,
+    MIN_OBSERVATIONS,
     MULTI_DAY_RETURNS_WARNING_THRESHOLD,
     PERFORMANCE_BASE,
     SHORT_HISTORY_WARNING_THRESHOLD,
@@ -35,6 +36,7 @@ from quantfolio.validation import (
 if TYPE_CHECKING:
     import pandas as pd
 
+    from quantfolio.macro import MacroSeries
     from quantfolio.models import PriceSeries
     from quantfolio.portfolio import Portfolio
 
@@ -78,6 +80,7 @@ def render_portfolio_report(
     include_warnings: bool = True,
     risk_free_rate: float = 0.0,
     confidence: float = 0.95,
+    inflation_index: MacroSeries | None = None,
 ) -> str:
     """Render a portfolio report as structured Markdown.
 
@@ -98,6 +101,7 @@ def render_portfolio_report(
         include_warnings: Whether to include the risk-warnings section.
         risk_free_rate: Annual risk-free rate used by the Sharpe ratio.
         confidence: Confidence level of the value-at-risk measures.
+        inflation_index: Optional monthly price-index levels supplied by the caller.
 
     Returns:
         Markdown text with composition, metrics, diagnostics and risk warnings.
@@ -164,6 +168,9 @@ def render_portfolio_report(
     lines.extend(metrics_lines)
 
     section = 3
+    if inflation_index is not None:
+        lines.extend(_render_inflation_section(portfolio, inflation_index, section=section))
+        section += 1
     if include_quality:
         lines.extend(
             _render_quality_section(
@@ -194,6 +201,66 @@ def render_portfolio_report(
         )
 
     return "\n".join(lines)
+
+
+def _render_inflation_section(
+    portfolio: Portfolio,
+    inflation_index: MacroSeries,
+    *,
+    section: int,
+) -> list[str]:
+    """Compare nominal and CPI-deflated metrics over identical monthly observations."""
+    matched = portfolio.monthly_inflation_comparison(inflation_index)
+    vintage = (
+        f"{inflation_index.vintage_date:%Y-%m-%d}"
+        if inflation_index.vintage_date is not None
+        else "no especificado"
+    )
+    lines = [
+        "",
+        f"## {section}. Poder adquisitivo e inflación",
+        "",
+        f"- Índice de precios: {inflation_index.series_id} ({inflation_index.source}).",
+        f"- Vintage: {vintage}.",
+        (
+            f"- Meses comparados: {matched.index.min():%Y-%m-%d} → "
+            f"{matched.index.max():%Y-%m-%d} ({len(matched)} observaciones)."
+        ),
+        "- La comparación es retrospectiva; el IPC publicado puede retrasarse y revisarse.",
+        "- Los meses sin cierres de cartera completos se excluyen de la comparación.",
+        "",
+        "| Métrica | Nominal | Real (poder adquisitivo) |",
+        "|---|---:|---:|",
+    ]
+    nominal = matched["nominal"]
+    real = matched["real"]
+    nominal_growth = cast("float", (1.0 + nominal).prod()) - 1.0
+    real_growth = cast("float", (1.0 + real).prod()) - 1.0
+    lines.append(f"| Rentabilidad acumulada | {nominal_growth:.2%} | {real_growth:.2%} |")
+    if len(matched) < MIN_OBSERVATIONS:
+        lines.extend(
+            f"| {label} | No disponible | No disponible |"
+            for label in ("CAGR", "Volatilidad anualizada mensual", "Máxima caída")
+        )
+        return lines
+    lines.extend(
+        [
+            (
+                f"| CAGR | {compound_annual_growth(nominal, periods_per_year=12):.2%} | "
+                f"{compound_annual_growth(real, periods_per_year=12):.2%} |"
+            ),
+            (
+                f"| Volatilidad anualizada mensual | "
+                f"{nominal.std(ddof=1) * math.sqrt(12):.2%} | "
+                f"{real.std(ddof=1) * math.sqrt(12):.2%} |"
+            ),
+            (
+                f"| Máxima caída | {max_drawdown_of_returns(nominal):.2%} | "
+                f"{max_drawdown_of_returns(real):.2%} |"
+            ),
+        ]
+    )
+    return lines
 
 
 def _render_currency_conversion_section(portfolio: Portfolio, *, section: int) -> list[str]:
