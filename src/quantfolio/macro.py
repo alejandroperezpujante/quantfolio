@@ -6,7 +6,7 @@ FRED serves today.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 from urllib.parse import urlencode
 
@@ -93,6 +93,8 @@ class MacroSeries:
         source: Human-readable name of the provider.
         vintage_date: Vintage the values represent — the point-in-time view.
             ``None`` means unspecified.
+        duplicate_observation_dates: Whether the input contained duplicate exact dates
+            before normalization; retained so monthly consumers can reject ambiguity.
 
     """
 
@@ -100,6 +102,12 @@ class MacroSeries:
     values: pd.Series[float]
     source: str = "FRED"
     vintage_date: pd.Timestamp | None = None
+    duplicate_observation_dates: bool = field(init=False, repr=False)
+
+    @property
+    def index_levels(self) -> pd.Series[float]:
+        """Return the normalized indicator values for explicit level-based calculations."""
+        return self.values
 
     def __post_init__(self) -> None:
         """Validate and clean the downloaded values.
@@ -118,6 +126,7 @@ class MacroSeries:
         if self.values.empty:
             msg = "La serie macroeconómica no puede estar vacía."
             raise ValueError(msg)
+        self.duplicate_observation_dates = self.values.index.has_duplicates
         cleaned = clean_numeric_series(self.values)
         if cleaned.empty:
             msg = "La serie macroeconómica no contiene valores válidos."

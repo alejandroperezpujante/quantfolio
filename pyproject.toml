@@ -74,6 +74,8 @@ known-first-party = ["quantfolio"]
 "src/quantfolio/sources/ecb.py" = ["S310"]
 # The provider imports capabilities; this lazy import keeps the graph acyclic.
 "src/quantfolio/sources/alpha_vantage/capabilities.py" = ["PLC0415"]
+# The report preserves its existing keyword options and adds an optional CPI input.
+"src/quantfolio/portfolio.py" = ["PLR0913"]
 # The report renderer mirrors the public Portfolio.report signature.
 "src/quantfolio/reporting.py" = ["PLR0913"]
 

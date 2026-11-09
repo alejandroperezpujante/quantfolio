@@ -29,6 +29,7 @@ solutions, implementation guidance, or design advice.
 | [monte-carlo-simulation-in-finance.md](monte-carlo-simulation-in-finance.md)       | Random sampling, law of large numbers, pseudo-randomness, uses and $1/\sqrt{N}$ convergence.            | 3       |
 | [portfolio-risk-measures.md](portfolio-risk-measures.md)                           | VaR (historical, parametric, Monte Carlo), expected shortfall, maximum drawdown and beta.               | 7       |
 | [macroeconomic-indicators.md](macroeconomic-indicators.md)                         | GDP, inflation (CPI/HICP/PCE), interest rates and yield curves, unemployment, release calendars.        | 13      |
+| [inflation-adjusted-portfolio.md](inflation-adjusted-portfolio.md)                 | Cálculo mensual de rentabilidad real, informe comparado y simulación con inflación fija.                | —       |
 | [financial-statement-fundamentals.md](financial-statement-fundamentals.md)         | Balance sheet, income statement, cash flow, accounting identity, filings and common ratios.             | 6       |
 
 ## Notes on sourcing
