@@ -162,6 +162,102 @@ def test_real_monthly_returns_rejects_gap_before_first_cpi_month() -> None:
         portfolio.real_monthly_returns(inflation_index)
 
 
+def test_real_monthly_returns_omit_partial_first_month() -> None:
+    """Returns beginning mid-month cannot use a full month of CPI deflation."""
+    dates = pd.DatetimeIndex(["2025-01-15", "2025-01-31", "2025-02-28", "2025-03-31"])
+    asset = PriceSeries(
+        ticker="AAA",
+        prices=pd.Series([100.0, 100.0, 110.0, 121.0], index=dates),
+        quote_currency="USD",
+    )
+    portfolio = Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0}, reporting_currency="USD")
+    inflation_index = _index([100, 102, 104, 106])
+
+    result = portfolio.real_monthly_returns(inflation_index)
+
+    assert list(result.index) == [pd.Timestamp("2025-02-28"), pd.Timestamp("2025-03-31")]
+    assert result.tolist() == pytest.approx([1.1 / (104 / 102) - 1, 1.1 / (106 / 104) - 1])
+
+
+def test_real_monthly_returns_omit_partial_last_month() -> None:
+    """A price history ending before the last trading day omits that month."""
+    dates = pd.DatetimeIndex(["2024-12-31", "2025-01-31", "2025-02-28", "2025-03-14"])
+    asset = PriceSeries(
+        ticker="AAA",
+        prices=pd.Series([100.0, 110.0, 121.0, 133.1], index=dates),
+        quote_currency="USD",
+    )
+    portfolio = Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0}, reporting_currency="USD")
+    inflation_index = _index([100, 102, 104, 106])
+
+    result = portfolio.real_monthly_returns(inflation_index)
+
+    assert list(result.index) == [pd.Timestamp("2025-01-31"), pd.Timestamp("2025-02-28")]
+
+
+def test_real_monthly_returns_require_complete_prior_month_close() -> None:
+    """A partial price base month cannot anchor the next month's full return."""
+    dates = pd.DatetimeIndex(["2024-12-15", "2025-01-31", "2025-02-28"])
+    asset = PriceSeries(
+        ticker="AAA",
+        prices=pd.Series([100.0, 110.0, 121.0], index=dates),
+        quote_currency="USD",
+    )
+    portfolio = Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0}, reporting_currency="USD")
+    inflation_index = _index([100, 102, 104], ["2024-12-01", "2025-01-01", "2025-02-01"])
+
+    result = portfolio.real_monthly_returns(inflation_index)
+
+    assert list(result.index) == [pd.Timestamp("2025-02-28")]
+
+
+def test_real_monthly_returns_accept_last_weekday_of_month() -> None:
+    """A Friday close may finish a month whose final calendar day is Sunday."""
+    dates = pd.DatetimeIndex(["2025-07-31", "2025-08-29", "2025-09-30"])
+    asset = PriceSeries(
+        ticker="AAA",
+        prices=pd.Series([100.0, 110.0, 121.0], index=dates),
+        quote_currency="USD",
+    )
+    portfolio = Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0}, reporting_currency="USD")
+    inflation_index = _index([100, 102, 104], ["2025-07-01", "2025-08-01", "2025-09-01"])
+
+    result = portfolio.real_monthly_returns(inflation_index)
+
+    assert list(result.index) == [pd.Timestamp("2025-08-31"), pd.Timestamp("2025-09-30")]
+
+
+def test_real_monthly_returns_use_calendar_end_for_weekend_prices() -> None:
+    """A weekend-traded portfolio requires the actual last calendar day."""
+    dates = pd.DatetimeIndex(["2025-07-31", "2025-08-31", "2025-09-30"])
+    asset = PriceSeries(
+        ticker="AAA",
+        prices=pd.Series([100.0, 110.0, 121.0], index=dates),
+        quote_currency="USD",
+    )
+    portfolio = Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0}, reporting_currency="USD")
+    inflation_index = _index([100, 102, 104], ["2025-07-01", "2025-08-01", "2025-09-01"])
+
+    result = portfolio.real_monthly_returns(inflation_index)
+
+    assert list(result.index) == [pd.Timestamp("2025-08-31"), pd.Timestamp("2025-09-30")]
+
+
+def test_real_monthly_returns_rejects_incomplete_interior_month() -> None:
+    """An incomplete interior close would contaminate adjacent monthly returns."""
+    dates = pd.DatetimeIndex(["2024-12-31", "2025-01-15", "2025-02-28", "2025-03-31"])
+    asset = PriceSeries(
+        ticker="AAA",
+        prices=pd.Series([100.0, 110.0, 121.0, 133.1], index=dates),
+        quote_currency="USD",
+    )
+    portfolio = Portfolio(assets={"AAA": asset}, weights={"AAA": 1.0}, reporting_currency="USD")
+    inflation_index = _index([100, 102, 104, 106])
+
+    with pytest.raises(ValueError, match="meses interiores incompletos"):
+        portfolio.real_monthly_returns(inflation_index)
+
+
 def test_report_pairs_metrics_on_cpi_covered_months() -> None:
     """Nominal and real metrics use the same months and show CPI provenance."""
     report = _portfolio().report(

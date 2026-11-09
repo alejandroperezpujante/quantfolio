@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
@@ -416,7 +417,7 @@ class Portfolio:
         return cast("pd.Series[float]", weighted)
 
     def monthly_inflation_comparison(self, inflation_index: MacroSeries) -> pd.DataFrame:
-        """Pair nominal and real monthly returns over available CPI reference months.
+        """Pair complete nominal and real monthly returns over CPI reference months.
 
         Args:
             inflation_index: Monthly price-index levels chosen by the caller.
@@ -445,15 +446,38 @@ class Portfolio:
             raise ValueError(msg)
         monthly_levels = pd.Series(levels.to_numpy(), index=reference_months, dtype=float)
         returns = self.portfolio_returns()
-        price_months = (
-            pd.DatetimeIndex(self.get_prices().dropna(how="any").index).to_period("M").unique()
-        )
+        common_dates = pd.DatetimeIndex(self.get_prices().dropna(how="any").index)
+        observed_months = common_dates.to_period("M")
+        price_months = observed_months.unique()
         if len(price_months) != price_months[-1].ordinal - price_months[0].ordinal + 1:
             msg = "En las rentabilidades de la cartera faltan meses interiores."
             raise ValueError(msg)
+        weekend_prices = bool((common_dates.day_of_week >= calendar.SATURDAY).any())
+        complete_months: set[pd.Period] = set()
+        for month in price_months:
+            calendar_end = month.to_timestamp(how="end").normalize()
+            required_end = (
+                calendar_end
+                if weekend_prices
+                else pd.Timestamp(pd.offsets.BMonthEnd().rollback(calendar_end))
+            )
+            if common_dates[observed_months == month][-1] >= required_end:
+                complete_months.add(month)
+        if any(month not in complete_months for month in price_months[1:-1]):
+            msg = "La cartera contiene meses interiores incompletos."
+            raise ValueError(msg)
+        eligible_months = pd.PeriodIndex(
+            [
+                month
+                for month in price_months[1:]
+                if month in complete_months and month - 1 in complete_months
+            ]
+        )
         portfolio_months = pd.DatetimeIndex(returns.index).to_period("M")
         nominal = (1.0 + returns).groupby(portfolio_months).prod() - 1.0
-        covered_months = pd.PeriodIndex(nominal.index.intersection(reference_months[1:]))
+        covered_months = pd.PeriodIndex(
+            nominal.index.intersection(reference_months[1:]).intersection(eligible_months)
+        )
         if covered_months.empty:
             msg = "No hay coincidencia suficiente entre la cartera y el índice de inflación."
             raise ValueError(msg)
@@ -474,8 +498,8 @@ class Portfolio:
                 currency's economy; annual inflation rates are not valid inputs.
 
         Returns:
-            Month-end-labelled real returns. The latest portfolio months are omitted until
-            their CPI reference observations are present.
+            Month-end-labelled real returns. Partial boundary months and the latest
+            portfolio months without CPI observations are omitted.
 
         Raises:
             ValueError: If the reporting currency is unset, CPI levels or monthly

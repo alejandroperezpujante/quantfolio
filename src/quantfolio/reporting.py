@@ -227,6 +227,7 @@ def _render_inflation_section(
             f"{matched.index.max():%Y-%m-%d} ({len(matched)} observaciones)."
         ),
         "- La comparación es retrospectiva; el IPC publicado puede retrasarse y revisarse.",
+        "- Los meses sin cierres de cartera completos se excluyen de la comparación.",
         "",
         "| Métrica | Nominal | Real (poder adquisitivo) |",
         "|---|---:|---:|",
