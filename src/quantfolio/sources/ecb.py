@@ -52,6 +52,29 @@ def _fetch_csv(url: str, symbol: str) -> str:
         raise ValueError(msg) from exc
 
 
+def _date_window(
+    start: DateLike,
+    end: DateLike | None,
+) -> tuple[pd.Timestamp, pd.Timestamp | None]:
+    """Validate and normalize the requested inclusive-start, exclusive-end window."""
+    start_stamp = naive_timestamp(start)
+    if pd.isna(cast("pd.Timestamp | None", start_stamp)):
+        msg = "La fecha inicial es obligatoria y debe ser una fecha válida."
+        raise ValueError(msg)
+    start_date = start_stamp.normalize()
+    if end is None:
+        return start_date, None
+    end_stamp = naive_timestamp(end)
+    if pd.isna(cast("pd.Timestamp | None", end_stamp)):
+        msg = "La fecha final debe ser una fecha válida."
+        raise ValueError(msg)
+    end_date = end_stamp.normalize()
+    if end_date <= start_date:
+        msg = "La fecha final debe ser posterior a la fecha inicial."
+        raise ValueError(msg)
+    return start_date, end_date
+
+
 class ECBExchangeRateSource(PriceSource):
     """Daily ECB reference rates, expressed as quote-currency units per EUR.
 
@@ -86,11 +109,7 @@ class ECBExchangeRateSource(PriceSource):
 
         """
         symbol, base, quote = _parse_pair(ticker)
-        start_date = naive_timestamp(start).normalize()
-        end_date = naive_timestamp(end).normalize() if end is not None else None
-        if end_date is not None and end_date <= start_date:
-            msg = "La fecha final debe ser posterior a la fecha inicial."
-            raise ValueError(msg)
+        start_date, end_date = _date_window(start, end)
 
         params = {"startPeriod": start_date.date().isoformat(), "format": "csvdata"}
         if end_date is not None:
@@ -108,6 +127,9 @@ class ECBExchangeRateSource(PriceSource):
             raise ValueError(msg) from exc
         if not {"TIME_PERIOD", "OBS_VALUE"}.issubset(frame.columns):
             msg = f"El CSV del ECB no contiene las columnas de fecha y valor para {symbol}."
+            raise ValueError(msg)
+        if frame.empty:
+            msg = f"No se han encontrado datos de {symbol} en el ECB para las fechas solicitadas."
             raise ValueError(msg)
 
         dates = pd.to_datetime(frame["TIME_PERIOD"], errors="coerce")

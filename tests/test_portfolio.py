@@ -13,6 +13,16 @@ from quantfolio.simulation import MonteCarloParameters
 from tests.helpers import make_series
 
 
+def _fx_rate(pair: str, values: list[float], dates: pd.DatetimeIndex) -> PriceSeries:
+    """Return a manually sourced FX series for the requested pair."""
+    return PriceSeries(
+        ticker=f"FX:{pair}",
+        prices=pd.Series(values, index=dates),
+        source="Manual FX input",
+        quote_currency=pair.rsplit("/", maxsplit=1)[1],
+    )
+
+
 def build_portfolio() -> Portfolio:
     """Return a fully overlapping two-asset portfolio."""
     return Portfolio(
@@ -109,6 +119,14 @@ def test_get_returns_uses_common_dates() -> None:
 
     assert len(returns) == 2
     assert not returns.isna().to_numpy().any()
+
+
+def test_analysis_currency_diagnostics_are_empty_without_reporting_currency() -> None:
+    """A currency-free portfolio has no conversion trace to report."""
+    diagnostics = build_mixed_calendar_portfolio().analysis_currency_conversion_diagnostics()
+
+    assert diagnostics.empty
+    assert "leg_index" in diagnostics.columns
 
 
 def test_alignment_summary_reports_coverage() -> None:
@@ -762,3 +780,55 @@ def test_reporting_currency_returns_drive_risk_and_monte_carlo() -> None:
     )
     expected_log_growth = float(np.log1p(expected_returns).mean()) * 252
     assert simulations.iloc[-1, 0] == pytest.approx(100.0 * np.exp(expected_log_growth))
+
+
+def test_cross_diagnostics_follow_conversion_order() -> None:
+    """A EUR-pivot conversion preserves USD→EUR then EUR→GBP leg order."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03"])
+    usd_asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([100.0, 100.0], index=dates, dtype=float),
+        quote_currency="USD",
+    )
+    gbp_asset = PriceSeries(
+        ticker="GB_ASSET",
+        prices=pd.Series([10.0, 11.0], index=dates, dtype=float),
+        quote_currency="GBP",
+    )
+    portfolio = Portfolio(
+        assets={usd_asset.ticker: usd_asset, gbp_asset.ticker: gbp_asset},
+        weights={usd_asset.ticker: 0.5, gbp_asset.ticker: 0.5},
+        reporting_currency="GBP",
+        exchange_rates=ExchangeRates(
+            [
+                _fx_rate("EUR/USD", [1.25, 1.25], dates),
+                _fx_rate("EUR/GBP", [0.8, 0.8], dates),
+            ]
+        ),
+    )
+
+    converted = portfolio.get_reporting_prices()
+    diagnostics = portfolio.currency_conversion_diagnostics()
+    usd_rows = diagnostics[diagnostics["asset"] == usd_asset.ticker]
+    identity_rows = diagnostics[diagnostics["asset"] == gbp_asset.ticker]
+
+    assert converted[usd_asset.ticker].tolist() == pytest.approx([64.0, 64.0])
+    assert usd_rows["leg_index"].tolist() == [1, 2, 1, 2]
+    assert usd_rows["from_currency"].tolist() == ["USD", "EUR", "USD", "EUR"]
+    assert usd_rows["to_currency"].tolist() == ["EUR", "GBP", "EUR", "GBP"]
+    assert usd_rows["applied_rate"].tolist() == pytest.approx([0.8, 0.8, 0.8, 0.8])
+    for _, conversion in usd_rows.groupby("asset_date", sort=False):
+        applied_rates = conversion["applied_rate"].to_numpy(dtype=float)
+        assert np.prod(applied_rates) == pytest.approx(0.64)
+    assert identity_rows["leg_index"].tolist() == [0, 0]
+    assert identity_rows["from_currency"].tolist() == ["GBP", "GBP"]
+    assert identity_rows["to_currency"].tolist() == ["GBP", "GBP"]
+    order = list(
+        zip(
+            diagnostics["asset"],
+            diagnostics["asset_date"],
+            diagnostics["leg_index"],
+            strict=True,
+        )
+    )
+    assert order == sorted(order)

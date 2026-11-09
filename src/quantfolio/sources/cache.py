@@ -86,14 +86,18 @@ class CachedPriceSource(PriceSource):
 
         """
         symbol = validate_ticker(ticker)
-        path = self._cache_dir / _slug(self._source.name) / f"{_cache_stem(symbol)}.csv"
+        path = self._cache_path(symbol)
         if path.exists() and not self._refresh:
             cached = self._read_cache(path, symbol, start, end)
             if cached is not None:
                 return cached
         asset = self._source.get_prices(symbol, start, end)
-        self._write_cache(path, asset, symbol)
+        self._write_cache(self._cache_path(symbol), asset, symbol)
         return asset
+
+    def _cache_path(self, symbol: str) -> Path:
+        """Return the current path selected by the provider's semantic namespace."""
+        return self._cache_dir / _slug(self._source.cache_namespace) / f"{_cache_stem(symbol)}.csv"
 
     def _read_cache(
         self,

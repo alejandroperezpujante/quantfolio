@@ -1,5 +1,6 @@
 """Offline checks for the committed notebooks."""
 
+import ast
 import json
 from pathlib import Path
 
@@ -17,6 +18,20 @@ NOTEBOOKS = [
     "notebooks/portfolio_crypto.ipynb",
     "notebooks/portfolio_multi_currency.ipynb",
 ]
+
+ASSET_NOTEBOOKS = NOTEBOOKS[1:5]
+
+
+def _patches_ecb_urlopen(expression: ast.expr) -> bool:
+    """Return whether an expression is the scoped ECB transport patch."""
+    return (
+        isinstance(expression, ast.Call)
+        and isinstance(expression.func, ast.Name)
+        and expression.func.id == "patch"
+        and bool(expression.args)
+        and isinstance(expression.args[0], ast.Constant)
+        and expression.args[0].value == "quantfolio.sources.ecb.urlopen"
+    )
 
 
 @pytest.mark.parametrize("path", NOTEBOOKS)
@@ -73,14 +88,76 @@ def test_multi_currency_notebook_demonstrates_ecb_and_manual_rates() -> None:
     assert any(cell.get("outputs") for cell in code_cells)
 
 
-def test_unified_demo_uses_auto_portfolio() -> None:
-    """The unified demo delegates portfolio setup to AutoPortfolio."""
-    path = ROOT / "notebooks/quantfolio_demo.ipynb"
+def test_multi_currency_notebook_scopes_ecb_patch_to_example() -> None:
+    """The ECB transport replacement wraps the example request, not other notebook work."""
+    path = ROOT / "notebooks/portfolio_multi_currency.ipynb"
     notebook = json.loads(path.read_text(encoding="utf-8"))
     sources = "\n".join(
         "".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code"
     )
+    tree = ast.parse(sources)
+    patched_windows = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.With)
+        and any(_patches_ecb_urlopen(item.context_expr) for item in node.items)
+    ]
+
+    assert len(patched_windows) == 1
+    scoped_nodes = {
+        id(node) for statement in patched_windows[0].body for node in ast.walk(statement)
+    }
+    ecb_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "ecb_source"
+        and node.func.attr == "get_prices"
+    ]
+    assert ecb_calls
+    assert all(id(call) in scoped_nodes for call in ecb_calls)
+
+
+def test_multi_currency_notebook_labels_embedded_ecb_csv_as_fixture() -> None:
+    """The offline ECB payload is identified as a didactic fixture, not a live capture."""
+    path = ROOT / "notebooks/portfolio_multi_currency.ipynb"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    sources = "\n".join("".join(cell["source"]) for cell in notebook["cells"]).casefold()
+
+    assert "fixture didáctica" in sources
+    assert "no es una captura fechada" in sources
+
+
+@pytest.mark.parametrize("path", ASSET_NOTEBOOKS)
+def test_asset_class_notebooks_describe_optional_currency_conversion(path: str) -> None:
+    """Single-currency examples no longer claim that the library cannot convert prices."""
+    notebook = json.loads((ROOT / path).read_text(encoding="utf-8"))
+    sources = "\n".join("".join(cell["source"]) for cell in notebook["cells"])
+
+    assert "La biblioteca no convierte divisas" not in sources
+    assert "La biblioteca puede convertir precios" in sources
+    assert "`reporting_currency`" in sources
+
+
+def test_unified_demo_uses_auto_portfolio() -> None:
+    """The unified demo delegates portfolio setup to AutoPortfolio."""
+    path = ROOT / "notebooks/quantfolio_demo.ipynb"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    sources = "\n".join("".join(cell["source"]) for cell in code_cells)
     assert "AutoPortfolio(" in sources
     assert "AutoPortfolioConfig(" in sources
     assert 'reporting_currency="EUR"' in sources
     assert "ExchangeRates.from_source(" not in sources
+
+    auto_portfolio_cells = [
+        cell for cell in code_cells if "AutoPortfolioConfig(" in "".join(cell["source"])
+    ]
+    assert len(auto_portfolio_cells) == 1
+    auto_portfolio_cell = auto_portfolio_cells[0]
+    assert isinstance(auto_portfolio_cell.get("execution_count"), int)
+    assert not any(
+        output.get("output_type") == "error" for output in auto_portfolio_cell.get("outputs", [])
+    )

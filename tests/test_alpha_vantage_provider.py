@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 import pandas as pd
 import pytest
 
+from quantfolio.auto_portfolio import _CheckedPriceSource
 from quantfolio.sources import alpha_vantage
 from quantfolio.sources.alpha_vantage.capabilities import (
     AlphaVantageCapabilities,
@@ -925,7 +926,86 @@ def test_fx_series_round_trips_through_the_csv_cache(
     assert second.ticker == "FX:EUR/USD"
     assert second.source.endswith("(cache)")
     assert list(second.prices) == list(first.prices)
-    assert (tmp_path / "alpha-vantage" / "FX:EUR-USD.csv").is_file()
+    assert (tmp_path / "alpha-vantage-premium-v2" / "FX:EUR-USD.csv").is_file()
+
+
+def test_alpha_cache_rechecks_namespace_after_downgrade(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A runtime downgrade changes the cache namespace before the next request."""
+    denial = AlphaVantageError(
+        "La clave no tiene acceso al endpoint premium.",
+        AlphaVantageErrorCategory.ENTITLEMENT,
+    )
+    stub = install_client(
+        monkeypatch,
+        [
+            premium_payload(pd.Timestamp("2025-01-02"), 5),
+            denial,
+            free_payload(pd.Timestamp("2025-01-02"), 5),
+        ],
+    )
+    source = make_source(AlphaVantagePlan.PREMIUM, indexes_enabled=True, cache_dir=tmp_path)
+    wrapper = _CheckedPriceSource(source)
+    cached = CachedPriceSource(wrapper, cache_dir=tmp_path)
+    premium_path = tmp_path / "alpha-vantage-premium-v2" / "IBM.csv"
+    free_path = tmp_path / "alpha-vantage-free-v2" / "IBM.csv"
+
+    first = cached.get_prices("IBM", "2025-01-02", "2025-01-10")
+
+    assert first.source == PREMIUM_PROVENANCE
+    assert premium_path.is_file()
+    premium_contents = premium_path.read_text(encoding="utf-8")
+    refreshed = CachedPriceSource(wrapper, cache_dir=tmp_path, refresh=True)
+    with pytest.raises(AlphaVantageError):
+        refreshed.get_prices("IBM", "2025-01-02", "2025-01-10")
+
+    assert source.plan is AlphaVantagePlan.FREE
+    assert wrapper.cache_namespace == "Alpha Vantage free v2"
+    assert premium_path.read_text(encoding="utf-8") == premium_contents
+    assert not free_path.exists()
+
+    downgraded = refreshed.get_prices("IBM", "2025-01-02", "2025-01-10")
+    cached_again = CachedPriceSource(wrapper, cache_dir=tmp_path).get_prices(
+        "IBM", "2025-01-02", "2025-01-10"
+    )
+
+    assert downgraded.source == FREE_PROVENANCE
+    assert free_path.is_file()
+    assert premium_path.read_text(encoding="utf-8") == premium_contents
+    assert cached_again.source.endswith("(cache)")
+    assert list(cached_again.prices) == list(downgraded.prices)
+    assert len(stub.calls) == 3
+
+
+def test_legacy_alpha_cache_directory_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The old plan-agnostic directory is left untouched and never read."""
+    dates = _observation_dates(pd.Timestamp("2025-01-02"), 5)
+    legacy = tmp_path / "alpha-vantage" / "IBM.csv"
+    legacy.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "Date": dates,
+            "Close": [55.0] * len(dates),
+            "ticker": "IBM",
+            "source": PREMIUM_PROVENANCE,
+        }
+    ).to_csv(legacy, index=False)
+    legacy_contents = legacy.read_text(encoding="utf-8")
+    stub = install_client(monkeypatch, [premium_payload(pd.Timestamp("2025-01-02"), 5)])
+    cached = CachedPriceSource(premium_source(cache_dir=tmp_path), cache_dir=tmp_path)
+
+    asset = cached.get_prices("IBM", "2025-01-02", "2025-01-10")
+
+    assert asset.source == PREMIUM_PROVENANCE
+    assert list(asset.prices) == pytest.approx([100.0, 101.0, 102.0, 103.0, 104.0])
+    assert legacy.read_text(encoding="utf-8") == legacy_contents
+    assert (tmp_path / "alpha-vantage-premium-v2" / "IBM.csv").is_file()
+    assert stub.calls[0]["function"] == PREMIUM_FUNCTION
 
 
 def test_non_equity_window_is_inclusive_start_and_exclusive_end(
@@ -965,8 +1045,13 @@ def test_fx_provider_marks_its_explicit_quote_currency(
     assert asset.quote_currency == "USD"
 
 
-def test_crypto_non_currency_market_remains_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A market identifier outside the currency-code format is not assumed to be fiat."""
+@pytest.mark.parametrize(("market", "expected"), [("BTC", None), ("USDT", None)])
+def test_crypto_non_fiat_market_remains_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    market: str,
+    expected: str | None,
+) -> None:
+    """A crypto quote asset outside the ECB fiat table is never assumed to be fiat."""
     install_client(monkeypatch, [crypto_payload(pd.Timestamp("2025-01-02"), 2)])
-    asset = premium_source().get_prices("CRYPTO:BTC/USDT", "2025-01-02")
-    assert asset.quote_currency is None
+    asset = premium_source().get_prices(f"CRYPTO:ETH/{market}", "2025-01-02")
+    assert asset.quote_currency == expected

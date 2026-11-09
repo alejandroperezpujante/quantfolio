@@ -12,7 +12,7 @@ from quantfolio.constants import (
     TRADING_DAYS_PER_YEAR,
 )
 from quantfolio.currency import ExchangeRateObservation, ExchangeRates
-from quantfolio.models import _normalize_currency_code
+from quantfolio.quote_metadata import _normalize_currency_code
 from quantfolio.reporting import (
     plot_portfolio_report,
     plot_simulation_paths,
@@ -51,6 +51,9 @@ _CURRENCY_DIAGNOSTIC_COLUMNS = (
     "applied_rate",
     "inverted",
     "carried_forward",
+    "from_currency",
+    "to_currency",
+    "leg_index",
 )
 
 
@@ -175,23 +178,29 @@ class Portfolio:
 
     def _reporting_prices_and_rate_uses(
         self,
+        dates: pd.DatetimeIndex | None = None,
     ) -> tuple[pd.DataFrame, list[tuple[str, pd.Timestamp, ExchangeRateObservation]]]:
-        """Build converted prices and retain the rate legs used for each observation."""
+        """Build converted prices and retain the rate legs used for each observation.
+
+        When ``dates`` is provided, only those observations are converted. ``None`` keeps the
+        strict public view over the union of every asset calendar.
+        """
         if self.reporting_currency is None:
             msg = "Debes indicar una divisa de reporte para obtener precios convertidos."
             raise ValueError(msg)
         prices: dict[str, pd.Series[float]] = {}
         rate_uses: list[tuple[str, pd.Timestamp, ExchangeRateObservation]] = []
         for ticker, asset in self.assets.items():
+            selected_prices = asset.prices if dates is None else asset.prices.reindex(dates)
             source_currency = asset.quote_currency
             if source_currency is None:
                 msg = f"El activo {ticker} no tiene divisa de cotización conocida."
                 raise ValueError(msg)
             if source_currency == self.reporting_currency:
-                prices[ticker] = asset.prices.copy()
+                prices[ticker] = selected_prices.copy()
                 continue
             converted_values: list[float] = []
-            for date, price in asset.prices.items():
+            for date, price in selected_prices.items():
                 asset_date = cast("pd.Timestamp", date)
                 factor, observations = self.exchange_rates.resolve_rate(
                     source_currency,
@@ -202,24 +211,37 @@ class Portfolio:
                 rate_uses.extend((ticker, asset_date, row) for row in observations)
             prices[ticker] = pd.Series(
                 converted_values,
-                index=asset.prices.index,
+                index=selected_prices.index,
                 dtype=float,
                 name=ticker,
             )
         return pd.concat(prices, axis=1).sort_index(), rate_uses
 
+    def _analysis_prices_and_rate_uses(
+        self,
+    ) -> tuple[pd.DataFrame, list[tuple[str, pd.Timestamp, ExchangeRateObservation]]]:
+        """Return the common-date analytical view and its conversion trace."""
+        local_prices = self.get_prices()
+        common_dates = pd.DatetimeIndex(local_prices.dropna(how="any").index)
+        if self.reporting_currency is None:
+            return local_prices.reindex(common_dates), []
+        return self._reporting_prices_and_rate_uses(common_dates)
+
     def _get_analysis_prices(self) -> pd.DataFrame:
         """Return the local or reporting-currency view used by portfolio analytics."""
-        if self.reporting_currency is None:
-            return self.get_prices()
-        return self.get_reporting_prices()
+        return self.analysis_prices()
+
+    def analysis_prices(self) -> pd.DataFrame:
+        """Return prices on the common analytical dates, in the reporting currency if set."""
+        return self._analysis_prices_and_rate_uses()[0]
 
     def currency_conversion_diagnostics(self) -> pd.DataFrame:
         """Return one trace row per asset date and selected FX rate leg.
 
-        The trace includes pair orientation, provider provenance, the source observation
-        date, calendar age, rate direction and whether the rate was carried forward. Identity
-        conversions are included with a ``-`` pair and ``No requerida`` source.
+        The trace includes pair orientation, currency legs, provider provenance, the source
+        observation date, calendar age, rate direction and whether the rate was carried
+        forward. Conversion legs are numbered from one in their application order; identity
+        conversions use leg zero, a ``-`` pair and a ``No requerida`` source.
 
         Returns:
             DataFrame containing rate-use trace rows. Currency-free portfolios return an
@@ -229,8 +251,38 @@ class Portfolio:
         if self.reporting_currency is None:
             return pd.DataFrame(columns=list(_CURRENCY_DIAGNOSTIC_COLUMNS))
         _, rate_uses = self._reporting_prices_and_rate_uses()
+        return self._currency_conversion_diagnostics_from_rate_uses(rate_uses)
+
+    def analysis_currency_conversion_diagnostics(self) -> pd.DataFrame:
+        """Return conversion diagnostics limited to the common analytical dates.
+
+        This is the report-facing counterpart of :meth:`currency_conversion_diagnostics`:
+        it traces only the dates shared by every asset, rather than the strict union view.
+        A portfolio without a reporting currency has no conversion trace and returns an
+        empty frame with the public diagnostic columns.
+        """
+        if self.reporting_currency is None:
+            return pd.DataFrame(columns=list(_CURRENCY_DIAGNOSTIC_COLUMNS))
+        prices, rate_uses = self._analysis_prices_and_rate_uses()
+        return self._currency_conversion_diagnostics_from_rate_uses(
+            rate_uses,
+            dates=pd.DatetimeIndex(prices.index),
+        )
+
+    def _currency_conversion_diagnostics_from_rate_uses(
+        self,
+        rate_uses: list[tuple[str, pd.Timestamp, ExchangeRateObservation]],
+        *,
+        dates: pd.DatetimeIndex | None = None,
+    ) -> pd.DataFrame:
+        """Build diagnostic rows for the selected conversion trace."""
         rows: list[dict[str, object]] = []
+        previous_key: tuple[str, pd.Timestamp] | None = None
+        leg_index = 0
         for ticker, date, observation in rate_uses:
+            key = (ticker, date)
+            leg_index = 1 if key != previous_key else leg_index + 1
+            previous_key = key
             rows.append(
                 {
                     "asset": ticker,
@@ -245,11 +297,15 @@ class Portfolio:
                     "applied_rate": observation.applied_rate,
                     "inverted": observation.inverted,
                     "carried_forward": observation.age_days > 0,
+                    "from_currency": observation.from_currency,
+                    "to_currency": observation.to_currency,
+                    "leg_index": leg_index,
                 }
             )
         for ticker, asset in self.assets.items():
             if asset.quote_currency != self.reporting_currency:
                 continue
+            identity_dates = asset.prices.index if dates is None else dates
             rows.extend(
                 {
                     "asset": ticker,
@@ -264,12 +320,15 @@ class Portfolio:
                     "applied_rate": 1.0,
                     "inverted": False,
                     "carried_forward": False,
+                    "from_currency": asset.quote_currency,
+                    "to_currency": self.reporting_currency,
+                    "leg_index": 0,
                 }
-                for date in asset.prices.index
+                for date in identity_dates
             )
         diagnostics = pd.DataFrame(rows, columns=list(_CURRENCY_DIAGNOSTIC_COLUMNS))
         return diagnostics.sort_values(
-            ["asset", "asset_date", "pair"],
+            ["asset", "asset_date", "leg_index"],
             ignore_index=True,
         )
 
@@ -325,7 +384,7 @@ class Portfolio:
             the largest gap.
 
         """
-        prices = self._get_analysis_prices()
+        prices = self.get_prices()
         union_dates = len(prices)
         common = prices.dropna(how="any")
         common_dates = len(common)

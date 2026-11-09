@@ -102,7 +102,8 @@ uv run jupyter lab notebooks/quantfolio_demo.ipynb
 ```
 
 Los cuadernos fijan `END = "2026-11-06"` para que sus resultados sean reproducibles; como `END` es
-exclusivo, la última sesión incluida es 2026-11-05 en todos los mercados.
+exclusivo, ninguna observación de esa fecha entra en el análisis. La última fecha efectiva depende del
+calendario y de la disponibilidad de cada proveedor, así que no tiene por qué coincidir entre mercados.
 
 ### Carteras por clase de activo
 
@@ -143,16 +144,37 @@ portfolio.plot_simulation(simulations)
 `AutoPortfolio` obtiene los datos durante la construcción. Por defecto utiliza Yahoo para símbolos
 ordinarios, Kraken para pares como `BTC/USD` y la caché CSV en `data/`. Si hay un proveedor alternativo
 compatible, lo prueba con un aviso: los precios pueden tener ajustes o mercados distintos. Alpha Vantage
-no comunica la divisa de sus acciones; si se utiliza como alternativa, indícala en `quote_currencies`.
-Las carteras con varias divisas requieren `reporting_currency`; el BCE aporta automáticamente los tipos
-EUR-first necesarios, con siete días de margen inicial y una antigüedad máxima de cuatro días.
+no comunica la divisa de sus acciones; si se utiliza como alternativa, indícala en `quote_currencies` y,
+si también falta la unidad de los precios crudos, en `quote_units`.
+Las carteras con varias divisas requieren `reporting_currency`. Los tipos pueden suministrarse manualmente
+en `ExchangeRates` o descargarse automáticamente; sin `exchange_rates`, `AutoPortfolio` usa el BCE con
+siete días de margen inicial y una antigüedad máxima predeterminada de cuatro días.
 
-`AutoPortfolioConfig` admite `sources`, `provider_priorities` (familias `equity`, `crypto`, `index`,
-`prefixed`), `ticker_priorities`, `provider_symbols` y `quote_currencies` para personalizar la ingesta.
+`AutoPortfolioConfig` admite `sources`, `provider_priorities` (familias `equity`, `crypto`, `index` y
+`prefixed`), `ticker_priorities`, `provider_symbols`, `quote_currencies`, `quote_units` y
+`asset_families` para personalizar la ingesta.
+`quote_currencies` declara la divisa del activo; `quote_units` declara la unidad de los precios crudos del
+proveedor (por ejemplo, `GBp` para peniques). Una unidad manual no vuelve a convertir una serie que el
+proveedor ya normalizó. Si la divisa o la unidad indicadas contradicen los metadatos del proveedor, la
+ingesta se detiene para ese activo: el conflicto no activa el proveedor alternativo ni reetiqueta datos.
+`asset_families` fuerza la familia de un ticker ambiguo con los valores `equity`, `crypto`, `index` o
+`prefixed`; las prioridades por ticker y `provider_symbols` siguen prevaleciendo. `BRK/B` se trata como
+acción por defecto, mientras que un par con barra y una cotización alfanumérica de cuatro o más caracteres
+exige `asset_families`. Los símbolos cripto compactos, como `ETHUSD`, no se clasifican por su forma: si
+quieres tratarlos como cripto, declara `asset_families` y, si se usa Alpha Vantage como alternativa, un
+`provider_symbols` como `CRYPTO:ETH/USD`: la biblioteca no adivina cómo dividirlos. En cripto, una cotización
+solo se etiqueta como divisa si figura en la tabla fiat del BCE; `ETH/BTC`, `BTC/USDT` y cotizaciones
+desconocidas quedan sin divisa. Sin conversión ni overrides, esos mercados siguen siendo válidos como
+cartera heredada; para analizarlos en fiat se necesita una serie cuya cotización ya esté expresada en una
+divisa admitida.
 También permite configurar `cache_enabled`, `cache_dir`, `cache_ttl_days`, `cache_refresh`, `fx_source`,
 `exchange_rates`, `fx_lookback_days` y `fx_max_age_days`. Las prioridades por ticker tienen precedencia
-sobre las de familia. Las divisas indicadas manualmente completan metadatos ausentes, pero no cambian una
-divisa conocida; usa `reporting_currency` para convertir precios. `end` es exclusivo.
+sobre las de familia. Usa `reporting_currency` para convertir precios. `end` es exclusivo.
+
+`fx_max_age_days` fija cuántos días puede reutilizarse el último tipo disponible. Si se omite al
+descargar tipos, se aplican cuatro días; si se aporta `exchange_rates`, se conserva el `max_age_days` de
+la colección y cualquier valor explícito debe coincidir con él. La antigüedad efectiva también determina
+el margen inicial de la descarga y la vigencia de la caché FX.
 
 ## Estructura del proyecto
 
@@ -161,6 +183,7 @@ divisa conocida; usa `reporting_currency` para convertir precios. `end` es exclu
 ├── src/quantfolio/          # biblioteca: solo código importable y tipado
 │   ├── __init__.py          # API pública
 │   ├── constants.py         # constantes compartidas
+│   ├── quote_metadata.py    # validación de divisas y unidades de cotización
 │   ├── models.py            # PriceSeries y limpieza numérica
 │   ├── auto_portfolio.py    # configuración e ingesta automática de carteras
 │   ├── portfolio.py         # Portfolio: pesos, alineación, métricas, informes y Monte Carlo
@@ -197,8 +220,9 @@ DataClass que representa una serie temporal de precios con sus metadatos (`ticke
 - convierte a numérico, elimina `NaN`, valores no finitos y precios no positivos, ordena el índice y elimina
   duplicados;
 - calcula automáticamente `mean_price` (media) y `std_price` (desviación típica muestral), como exige el enunciado.
-- puede registrar `quote_currency` y `quote_unit`. Acepta códigos ISO de tres letras; normaliza GBX/GBp a GBP,
-  ILA a ILS y ZAc a ZAR multiplicando los precios por 0,01, y conserva la unidad original para su trazabilidad.
+- puede registrar `quote_currency` y `quote_unit`. Los códigos se validan por su forma de tres letras, sin
+  comprobar el registro ISO completo; en `quote_unit`, las grafías inequívocas GBX/GBp, ILA y ZAc se interpretan
+  como GBP, ILS y ZAR multiplicando los precios por 0,01, y se conserva la unidad original para su trazabilidad.
   Yahoo obtiene la unidad desde sus metadatos; Kraken y Alpha Vantage reconocen la divisa de pares explícitos. Si no se conoce, proporciona la divisa manualmente. La caché antigua puede requerir `refresh=True`.
 
 El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_volatility`,
@@ -214,10 +238,13 @@ Una **cartera de inversión** es una colección de activos junto con la fracció
 - **normaliza** las ponderaciones para que sumen 1 (acepta pesos arbitrarios como `{AAPL: 35, SPY: 25, ...}`);
 - agrega los activos en una tabla de precios por fecha, calcula rentabilidades diarias ponderadas y estadísticos
   anualizados, y ofrece informe, gráficos y simulación de Monte Carlo.
-- puede fijar `reporting_currency` y una colección `ExchangeRates`. `get_prices()` mantiene la vista de precios
-  locales y `get_reporting_prices()` entrega la vista convertida que usan las rentabilidades y los análisis. La
-  conversión requiere divisa conocida en todos los activos; las carteras antiguas sin divisas siguen disponibles,
-  y sus informes indican que no se evaluó la conversión.
+- puede fijar `reporting_currency` y una colección `ExchangeRates`. `get_prices()` mantiene la vista local sobre
+  la unión de calendarios; `get_reporting_prices()` aplica la conversión a esa unión estricta y
+  `analysis_prices()` limita la conversión a las fechas comunes que alimentan las métricas y los análisis.
+  `currency_conversion_diagnostics()` conserva la traza de la unión completa y
+  `analysis_currency_conversion_diagnostics()` usa la misma ventana común que el informe. La conversión requiere
+  divisa conocida en todos los activos; las carteras antiguas sin divisas siguen disponibles, y sus informes
+  indican que no se evaluó la conversión.
 
 `ExchangeRates` admite series `PriceSeries` manuales o `ExchangeRates.from_source(...)`. Los tickers usan el orden
 `FX:AAA/BBB`: cada valor expresa unidades de `BBB` por una unidad de `AAA`. La resolución usa primero el par directo,
@@ -257,14 +284,19 @@ de `get_series` es exclusivo, igual que en `PriceSource`. Si ALFRED sirve un vin
 ejemplo, cuando recorta una fecha futura hasta su último vintage disponible), `get_series` lanza un `ValueError`
 para no etiquetar los valores con una fecha a la que no pertenecen.
 
-`CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<proveedor>/<ticker-saneado>.csv`
-(por ejemplo, `BTC/USD` → `BTC-USD.csv`); el archivo se reutiliza mientras empiece antes de la fecha solicitada
-y su último dato siga vigente (margen configurable con `ttl_days`), y se reemplaza en caso contrario o con
-`refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de forma que dos tickers que sanean al
-mismo nombre de archivo nunca comparten precios; si la columna no coincide con el ticker pedido, la entrada se
-trata como un fallo de caché. Los CSV escritos por versiones anteriores, sin la columna `ticker`, se aceptan solo
-cuando el ticker no necesita saneado (el nombre del fichero coincide exactamente con el ticker); en caso contrario
-la entrada cuenta como fallo de caché y se regenera.
+`CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<namespace>/<ticker-saneado>.csv`
+(por ejemplo, `BTC/USD` → `BTC-USD.csv`). El subdirectorio procede de `PriceSource.cache_namespace`, que por
+defecto coincide con el nombre visible; Alpha Vantage lo especializa para separar la semántica de precio
+(`alpha-vantage-free-v2`, `alpha-vantage-premium-v2`). Los directorios antiguos `alpha-vantage/` no identifican
+esa semántica: se dejan intactos y se vuelven a descargar los datos. El archivo se reutiliza mientras empiece antes
+de la fecha solicitada y su último dato siga vigente (margen configurable con `ttl_days`), y se reemplaza en caso
+contrario o con `refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de forma que dos tickers
+que sanean al mismo nombre de archivo nunca comparten precios; si la columna no coincide con el ticker pedido, la
+entrada se trata como un fallo de caché. Los CSV escritos por versiones anteriores, sin la columna `ticker`, se
+aceptan solo cuando el ticker no necesita saneado (el nombre del fichero coincide exactamente con el ticker); en
+caso contrario la entrada cuenta como fallo de caché y se regenera. Si `AutoPortfolio` va a interpretar
+monetariamente una entrada antigua sin divisa ni unidad conocidas, fuerza su refresco y no reutiliza el CSV
+heredado si falla; cuando el refresco tampoco establece la unidad, hay que declararla en `quote_units`.
 
 ### Alpha Vantage opcional
 
@@ -284,6 +316,11 @@ La procedencia indica `free, raw` o `premium, adjusted` para acciones y `(<plan>
 siempre valida la clave con una petición; con caché fresca usa una petición, y sin ella dos en free o tres en premium.
 Las capacidades se almacenan 24 horas en `data/alpha-vantage/capabilities/` con una huella SHA-256. Una denegación
 posterior rebaja el plan o deshabilita solo índices; no reintenta la petición ni pide datos de menor frecuencia.
+
+Un cierre bruto y uno ajustado no son equivalentes: los ajustes incorporan eventos corporativos, como dividendos o
+splits, y modifican la serie histórica. Yahoo descarga cierres ajustados (`auto_adjust=True`); para acciones, Alpha
+Vantage entrega brutos en *free* y ajustados en *premium*. Mezclar ambas semánticas sin documentarlo altera las
+rentabilidades y las comparaciones entre proveedores.
 
 ## Limpieza y alineación temporal
 
@@ -455,7 +492,8 @@ pasen el análisis. Cuando el *quality gate* no está en verde, el paso del esc�
 
 ## Limitaciones y advertencias
 
-- La conversión de divisas requiere una divisa de reporte, cotizaciones conocidas y tipos de cambio históricos suministrados por la persona usuaria.
+- La conversión de divisas requiere una divisa de reporte, cotizaciones conocidas y tipos de cambio históricos:
+  manuales en `ExchangeRates` o descargados automáticamente desde el BCE.
 
 - Kraken solo conserva las últimas 720 velas diarias (≈2 años). Si `START` queda fuera de esa ventana,
   `KrakenSource` lanza un error explicativo y no devuelve una serie truncada. Para recuperar el cuaderno,

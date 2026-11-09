@@ -59,6 +59,11 @@ class PriceSource(ABC):
         """Return the human-readable provider name."""
         raise NotImplementedError
 
+    @property
+    def cache_namespace(self) -> str:
+        """Return the provider identity whose cached prices share semantics."""
+        return self.name
+
     @abstractmethod
     def get_prices(
         self,

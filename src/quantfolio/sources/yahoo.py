@@ -5,8 +5,10 @@ from typing import TYPE_CHECKING, cast
 
 import pandas as pd
 import yfinance as yf  # type: ignore[import-untyped]
+from yfinance.exceptions import YFException  # type: ignore[import-untyped]
 
-from quantfolio.models import PriceSeries, _normalize_quote_metadata
+from quantfolio.models import PriceSeries
+from quantfolio.quote_metadata import _normalize_quote_metadata
 from quantfolio.sources.base import PriceSource, validate_ticker
 
 if TYPE_CHECKING:
@@ -97,6 +99,6 @@ class YahooFinanceSource(PriceSource):
                 unit = None
             if unit is not None:
                 _normalize_quote_metadata(None, unit)
-        except ValueError, TypeError, KeyError, OSError:
+        except ValueError, TypeError, KeyError, OSError, YFException:
             unit = None
         return PriceSeries(ticker=symbol, prices=prices, source=self.name, quote_unit=unit)

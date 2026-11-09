@@ -9,6 +9,7 @@ from urllib.request import urlopen
 import pandas as pd
 
 from quantfolio.models import PriceSeries
+from quantfolio.quote_metadata import ECB_FIAT_CURRENCIES
 from quantfolio.sources.base import PriceSource, naive_timestamp, validate_ticker
 
 if TYPE_CHECKING:
@@ -38,9 +39,10 @@ def _to_pair(ticker: str) -> str:
 
 def _quote_from_market(symbol: str, pair: str) -> str | None:
     """Resolve explicit or compact pairs without guessing their quote asset."""
-    match = re.fullmatch(r"[^/]+/([A-Z]{3})", symbol.upper())
+    match = re.fullmatch(r"[^/]+/([A-Z0-9]{1,20})", symbol.upper())
     if match:
-        return match.group(1)
+        quote = match.group(1)
+        return quote if quote in ECB_FIAT_CURRENCIES else None
     quote = None
     try:
         url = f"https://api.kraken.com/0/public/AssetPairs?{urlencode({'pair': pair})}"
@@ -51,8 +53,9 @@ def _quote_from_market(symbol: str, pair: str) -> str | None:
             market = next(iter(result.values()))
             name = market.get("wsname") if isinstance(market, dict) else None
             if isinstance(name, str):
-                match = re.fullmatch(r"[^/]+/([A-Z]{3})", name.upper())
-                quote = match.group(1) if match else None
+                match = re.fullmatch(r"[^/]+/([A-Z0-9]{1,20})", name.upper())
+                if match and match.group(1) in ECB_FIAT_CURRENCIES:
+                    quote = match.group(1)
     except OSError, ValueError, TypeError, AttributeError:
         pass
     return quote

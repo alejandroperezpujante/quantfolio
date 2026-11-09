@@ -1,7 +1,6 @@
 """Price-series model with automatic descriptive statistics."""
 
 import math
-import re
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -9,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from quantfolio.constants import MIN_OBSERVATIONS, TRADING_DAYS_PER_YEAR
+from quantfolio.quote_metadata import _normalize_quote_metadata
 from quantfolio.reporting import plot_simulation_paths
 from quantfolio.risk import max_drawdown, sharpe_ratio
 from quantfolio.simulation import (
@@ -55,54 +55,6 @@ def clean_numeric_series(
     cleaned = cleaned.sort_index()
     cleaned.index = cleaned.index.rename(None)
     return cast("pd.Series[float]", cleaned.astype(float))
-
-
-def _normalize_quote_metadata(
-    quote_currency: str | None,
-    quote_unit: str | None,
-) -> tuple[str | None, str | None, float]:
-    """Validate quote metadata and return its canonical currency and unit factor."""
-    unit_currency: str | None = None
-    unit_factor = 1.0
-    normalized_unit = quote_unit
-    if quote_unit is not None:
-        if not isinstance(quote_unit, str) or not quote_unit.strip():
-            msg = "La unidad de cotización debe ser un texto no vacío."
-            raise ValueError(msg)
-        normalized_unit = quote_unit.strip()
-        special_units = {
-            "GBX": ("GBP", 0.01),
-            "ILA": ("ILS", 0.01),
-            "ZAC": ("ZAR", 0.01),
-        }
-        if normalized_unit == "GBp":
-            unit_currency, unit_factor = "GBP", 0.01
-        elif normalized_unit.upper() in special_units:
-            unit_currency, unit_factor = special_units[normalized_unit.upper()]
-        else:
-            unit_currency = _normalize_currency_code(normalized_unit, "La unidad de cotización")
-
-    normalized_currency = (
-        _normalize_currency_code(quote_currency, "La divisa de cotización")
-        if quote_currency is not None
-        else unit_currency
-    )
-    if unit_currency is not None and normalized_currency != unit_currency:
-        msg = "La unidad de cotización no coincide con la divisa indicada."
-        raise ValueError(msg)
-    return normalized_currency, normalized_unit, unit_factor
-
-
-def _normalize_currency_code(value: object, label: str) -> str:
-    """Return an uppercase three-letter currency code after validating its shape."""
-    if not isinstance(value, str):
-        msg = f"{label} debe ser un texto."
-        raise TypeError(msg)
-    code = value.strip().upper()
-    if not re.fullmatch(r"[A-Z]{3}", code):
-        msg = f"{label} debe ser un código de tres letras."
-        raise ValueError(msg)
-    return code
 
 
 @dataclass

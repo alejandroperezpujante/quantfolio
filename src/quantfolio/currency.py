@@ -6,10 +6,12 @@ import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import cast
 
 import pandas as pd
 
-from quantfolio.models import PriceSeries, _normalize_currency_code
+from quantfolio.models import PriceSeries
+from quantfolio.quote_metadata import _normalize_currency_code
 from quantfolio.sources.base import DateLike, PriceSource, naive_timestamp
 
 _PAIR_PATTERN = re.compile(r"FX:([A-Z]{3})/([A-Z]{3})", re.IGNORECASE)
@@ -60,14 +62,15 @@ class ExchangeRateObservation:
     inverted: bool
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, init=False, eq=False)
 class ExchangeRates:
     """Collection of historical FX ``PriceSeries`` with a bounded carry-forward.
 
     Rate tickers identify the ordered pair: ``FX:EUR/USD`` stores USD units per EUR.
     ``resolve_rate`` prefers a direct pair, then its inverse, and finally a two-leg EUR
     cross. Each selected observation must be on or before the requested date and no more
-    than ``max_age_days`` calendar days old.
+    than ``max_age_days`` calendar days old. Collections compare by identity because their
+    public rate series contain mutable pandas objects, and they are deliberately unhashable.
 
     Args:
         rates: Mapping or iterable of rate series returned by a ``PriceSource`` or supplied
@@ -79,6 +82,7 @@ class ExchangeRates:
     rates: tuple[PriceSeries, ...]
     max_age_days: int
     _pairs: dict[tuple[str, str], PriceSeries] = field(repr=False, compare=False)
+    __hash__ = None  # type: ignore[assignment]
 
     def __init__(
         self,
@@ -156,7 +160,11 @@ class ExchangeRates:
         """
         source = _normalize_currency_code(from_currency, "La divisa de origen")
         target = _normalize_currency_code(to_currency, "La divisa de destino")
-        date = naive_timestamp(on_date).normalize()
+        date_stamp = naive_timestamp(on_date)
+        if pd.isna(cast("pd.Timestamp | None", date_stamp)):
+            msg = "La fecha de conversión debe ser una fecha válida."
+            raise ValueError(msg)
+        date = date_stamp.normalize()
         if source == target:
             return 1.0, ()
 
@@ -253,9 +261,7 @@ class ExchangeRates:
         pair = _parse_pair(series.ticker)
         position = int(series.prices.index.searchsorted(on_date, side="right")) - 1
         if position < 0:
-            msg = (
-                f"La observación de {pair[0]}/{pair[1]} es posterior a la fecha {on_date:%Y-%m-%d}."
-            )
+            msg = f"No hay observaciones de {pair[0]}/{pair[1]} en o antes del {on_date:%Y-%m-%d}."
             raise _RateUnavailableError(msg)
         observation_date = pd.Timestamp(series.prices.index[position])
         age_days = (on_date - observation_date.normalize()).days
