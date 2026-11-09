@@ -256,6 +256,41 @@ def test_price_series_normalizes_currency_code_without_ticker_inference() -> Non
     assert unknown.quote_currency is None
 
 
+@pytest.mark.parametrize("alias", ["GBp", "GBX", "ILA", "ZAc"])
+def test_quote_currency_rejects_unit_aliases(alias: str) -> None:
+    """Currency fields reject values that are quote units rather than currencies."""
+    prices = make_prices([120.0])
+    with pytest.raises(ValueError, match="quote_unit"):
+        PriceSeries(ticker="TEST", prices=prices, quote_currency=alias)
+
+    canonical = PriceSeries(ticker="TEST", prices=make_prices([120.0]), quote_currency="GBP")
+    assert canonical.quote_currency == "GBP"
+    lower_case = PriceSeries(ticker="TEST", prices=make_prices([120.0]), quote_currency="usd")
+    assert lower_case.quote_currency == "USD"
+
+
+def test_quote_unit_aliases_are_unambiguous() -> None:
+    """Only documented minor-unit spellings are normalized at one percent."""
+    for unit, currency in (
+        ("GBp", "GBP"),
+        ("GBX", "GBP"),
+        ("ILA", "ILS"),
+        ("ZAc", "ZAR"),
+    ):
+        asset = PriceSeries(ticker="TEST", prices=make_prices([120.0]), quote_unit=unit)
+        assert asset.quote_currency == currency
+        assert asset.quote_unit == unit
+        assert asset.prices.iloc[0] == pytest.approx(1.2)
+
+    canonical = PriceSeries(ticker="TEST", prices=make_prices([120.0]), quote_unit="GBP")
+    assert canonical.quote_currency == "GBP"
+    assert canonical.prices.iloc[0] == pytest.approx(120.0)
+
+    ambiguous_prices = make_prices([120.0])
+    with pytest.raises(ValueError, match=r"GBp.*GBP|GBP.*GBp"):
+        PriceSeries(ticker="TEST", prices=ambiguous_prices, quote_unit="Gbp")
+
+
 @pytest.mark.parametrize(
     ("quote_currency", "quote_unit", "message"),
     [("US", None, "divisa"), ("USD", "GBX", "no coincide")],

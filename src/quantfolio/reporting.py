@@ -198,31 +198,36 @@ def render_portfolio_report(
 
 def _render_currency_conversion_section(portfolio: Portfolio, *, section: int) -> list[str]:
     """Render rate provenance, observation dates and carried observations."""
-    diagnostics = portfolio.currency_conversion_diagnostics()
+    diagnostics = portfolio.analysis_currency_conversion_diagnostics()
     lines = [
         "",
         f"## {section}. Conversión de divisas",
         "",
-        "| Activo | Par | Fuente | Fechas de observación | Arrastres |",
-        "|---|---|---|---|---:|",
+        (
+            "| Activo | Par | Fuente | Primera observación | Última observación | "
+            "Observaciones | Arrastres |"
+        ),
+        "|---|---|---|---|---|---:|---:|",
     ]
     for ticker in portfolio.assets:
         asset_rows = diagnostics[diagnostics["asset"] == ticker]
         groups = asset_rows.groupby(["pair", "source"], sort=False)
         for (pair, source), rows in groups:
-            observation_dates = (
-                "-"
-                if pair == "-"
-                else ", ".join(sorted({date.strftime("%Y-%m-%d") for date in rows["rate_date"]}))
-            )
+            first_observation = rows["rate_date"].min()
+            last_observation = rows["rate_date"].max()
+            observation_count = int(rows["rate_date"].nunique())
             carry_forwards = int(rows["carried_forward"].sum())
             lines.append(
-                f"| {ticker} | {pair} | {source} | {observation_dates} | {carry_forwards} |"
+                f"| {ticker} | {pair} | {source} | {first_observation:%Y-%m-%d} | "
+                f"{last_observation:%Y-%m-%d} | {observation_count} | {carry_forwards} |"
             )
     lines.extend(
         [
             "",
-            "_Los tipos ECB son referencias informativas, no precios de ejecución de un bróker._",
+            (
+                "_Los tipos de referencia, como los publicados por el BCE, son informativos; "
+                "no son precios de ejecución de un bróker._"
+            ),
             "_Las fechas diarias no establecen un corte intradía común entre mercados._",
         ]
     )
@@ -432,11 +437,7 @@ def plot_portfolio_report(portfolio: Portfolio) -> None:
         portfolio: Portfolio to plot.
 
     """
-    prices = (
-        portfolio.get_reporting_prices()
-        if portfolio.reporting_currency is not None
-        else portfolio.get_prices()
-    ).dropna(how="any")
+    prices = portfolio.analysis_prices().dropna(how="any")
     returns = portfolio.get_returns()
     figure, axes = plt.subplots(2, 2, figsize=(14, 10))
 

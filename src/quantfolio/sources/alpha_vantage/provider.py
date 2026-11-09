@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 import pandas as pd
 
 from quantfolio.models import PriceSeries
+from quantfolio.quote_metadata import ECB_FIAT_CURRENCIES
 from quantfolio.sources.alpha_vantage.capabilities import (
     AlphaVantageCapabilities,
     AlphaVantageCapabilityStore,
@@ -327,6 +328,11 @@ class AlphaVantageSource(PriceSource):
         return "Alpha Vantage"
 
     @property
+    def cache_namespace(self) -> str:
+        """Separate raw free data from adjusted premium data across cache versions."""
+        return f"{self.name} {self._plan.value} v2"
+
+    @property
     def plan(self) -> AlphaVantagePlan:
         """Return the plan currently in force for this source."""
         return self._plan
@@ -382,7 +388,7 @@ class AlphaVantageSource(PriceSource):
             quote_currency = route.parameters["to_symbol"]
         elif route.family is _Family.CRYPTO:
             market = route.parameters["market"]
-            if re.fullmatch(r"[A-Z]{3}", market):
+            if market in ECB_FIAT_CURRENCIES:
                 quote_currency = market
         return PriceSeries(
             ticker=symbol,

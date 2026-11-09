@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, cast
 from urllib.parse import parse_qs, urlparse
 
+import pandas as pd
 import pytest
 
 from quantfolio.sources.ecb import ECBExchangeRateSource
 
 if TYPE_CHECKING:
-    from quantfolio.sources.base import PriceSource
+    from quantfolio.sources.base import DateLike, PriceSource
 
 
 def _new_source() -> PriceSource:
@@ -124,6 +125,46 @@ def test_ecb_source_rejects_an_empty_requested_window(
 
     with pytest.raises(ValueError, match="No se han encontrado datos"):
         source.get_prices("FX:EUR/USD", "2025-01-02", "2025-01-04")
+
+
+def test_ecb_header_only_reports_no_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A header-only CSV is an empty observation set, not an invalid price series."""
+    source, _urls = _install_response(monkeypatch, "TIME_PERIOD,OBS_VALUE\n")
+
+    with pytest.raises(ValueError, match="No se han encontrado datos"):
+        source.get_prices("FX:EUR/USD", "2025-01-02")
+
+
+@pytest.mark.parametrize("invalid_start", [None, pd.NaT])
+def test_ecb_source_rejects_missing_start_dates(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_start: object,
+) -> None:
+    """A missing start fails in Spanish before any HTTP request."""
+    source, urls = _install_response(
+        monkeypatch,
+        "TIME_PERIOD,OBS_VALUE\n2025-01-02,1.03\n",
+    )
+    invalid = cast("DateLike", invalid_start)
+
+    with pytest.raises(ValueError, match="fecha inicial"):
+        source.get_prices("FX:EUR/USD", invalid)
+
+    assert urls == []
+
+
+def test_ecb_source_rejects_missing_end_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An invalid end fails in Spanish before any HTTP request."""
+    source, urls = _install_response(
+        monkeypatch,
+        "TIME_PERIOD,OBS_VALUE\n2025-01-02,1.03\n",
+    )
+    invalid = cast("DateLike", pd.NaT)
+
+    with pytest.raises(ValueError, match="fecha final"):
+        source.get_prices("FX:EUR/USD", "2025-01-02", invalid)
+
+    assert urls == []
 
 
 @pytest.mark.parametrize(

@@ -1,14 +1,19 @@
 """Tests for currency conversion and rate selection."""
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 
-from quantfolio.currency import ExchangeRates
+from quantfolio.currency import ExchangeRateObservation, ExchangeRates
 from quantfolio.models import PriceSeries
 from quantfolio.portfolio import Portfolio
+from quantfolio.simulation import MonteCarloParameters
 from tests.helpers import TRADING_DATES, StubSource
+
+if TYPE_CHECKING:
+    from quantfolio.sources.base import DateLike
 
 
 def _exchange_rates(
@@ -35,6 +40,45 @@ def _rate(
         source=source,
         quote_currency=quote_currency,
     )
+
+
+def _mixed_calendar_conversion_portfolio(
+    *, max_age_days: int = 4
+) -> tuple[Portfolio, pd.DatetimeIndex]:
+    """Return a conversion portfolio with USD-only dates around four shared dates."""
+    usd_dates = pd.DatetimeIndex(
+        [
+            "2025-01-02",
+            "2025-01-03",
+            "2025-01-06",
+            "2025-01-07",
+            "2025-01-08",
+            "2025-01-09",
+        ]
+    )
+    common_dates = usd_dates[2:]
+    usd_asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([80.0, 90.0, 100.0, 110.0, 100.0, 120.0], index=usd_dates),
+        quote_currency="USD",
+    )
+    eur_asset = PriceSeries(
+        ticker="EU_ASSET",
+        prices=pd.Series([100.0, 101.0, 99.0, 104.0], index=common_dates),
+        quote_currency="EUR",
+    )
+    rate = _rate(
+        "USD/EUR",
+        [0.9, 0.95, 0.92, 0.91],
+        [date.date().isoformat() for date in common_dates],
+    )
+    portfolio = Portfolio(
+        assets={usd_asset.ticker: usd_asset, eur_asset.ticker: eur_asset},
+        weights={usd_asset.ticker: 0.5, eur_asset.ticker: 0.5},
+        reporting_currency="EUR",
+        exchange_rates=_exchange_rates([rate], max_age_days=max_age_days),
+    )
+    return portfolio, common_dates
 
 
 def test_exchange_rates_resolve_identity_without_observations() -> None:
@@ -234,8 +278,18 @@ def test_exchange_rates_reject_future_only_observations() -> None:
     rates = _exchange_rates([_rate("USD/EUR", [0.9], ["2025-01-03"])])
 
     on_date = pd.Timestamp("2025-01-02")
-    with pytest.raises(ValueError, match="posterior"):
+    with pytest.raises(ValueError, match=r"No hay observaciones.*en o antes"):
         rates.resolve_rate("USD", "EUR", on_date)
+
+
+@pytest.mark.parametrize("invalid_date", [None, pd.NaT])
+def test_resolve_rate_rejects_missing_dates(invalid_date: object) -> None:
+    """A null conversion date fails with a Spanish message before selecting a rate."""
+    rates = _exchange_rates([_rate("USD/EUR", [0.9], ["2025-01-02"])])
+    invalid = cast("DateLike", invalid_date)
+
+    with pytest.raises(ValueError, match="fecha de conversión"):
+        rates.resolve_rate("USD", "EUR", invalid)
 
 
 def test_exchange_rates_reject_missing_paths() -> None:
@@ -262,6 +316,20 @@ def test_exchange_rates_reject_invalid_age_limits(max_age_days: int) -> None:
     """The carry-forward policy must be a non-negative integer."""
     with pytest.raises(ValueError, match="max_age_days"):
         _exchange_rates([], max_age_days=max_age_days)
+
+
+def test_exchange_rates_identity_equality_and_unhashable() -> None:
+    """Rate collections compare by identity and cannot be used as mapping keys."""
+    rate = _rate("USD/EUR", [0.9], ["2025-01-02"])
+    first = _exchange_rates([rate])
+    second = _exchange_rates([rate])
+    same = first
+
+    assert same is first
+    assert same == first
+    assert first != second
+    with pytest.raises(TypeError, match="ExchangeRates"):
+        hash(first)
 
 
 def test_exchange_rates_reject_mismatched_rate_quote_currency() -> None:
@@ -371,6 +439,169 @@ def test_portfolio_golden_conversion_uses_reporting_prices_for_returns() -> None
     assert list(reporting_prices[asset.ticker]) == [90.0, 104.5]
     assert returns.iloc[0, 0] == pytest.approx(104.5 / 90.0 - 1.0)
     assert portfolio.portfolio_returns().iloc[0] == pytest.approx(0.1611111111111111)
+
+
+def test_analysis_converts_only_common_dates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Analytics convert the shared calendar without requiring rates for excluded dates."""
+    portfolio, common_dates = _mixed_calendar_conversion_portfolio()
+    requested_dates: list[pd.Timestamp] = []
+    original = ExchangeRates.resolve_rate
+
+    def recording_resolve_rate(
+        self: ExchangeRates,
+        from_currency: str,
+        to_currency: str,
+        on_date: pd.Timestamp,
+    ) -> tuple[float, tuple[ExchangeRateObservation, ...]]:
+        requested_dates.append(pd.Timestamp(on_date).normalize())
+        return original(self, from_currency, to_currency, on_date)
+
+    monkeypatch.setattr(ExchangeRates, "resolve_rate", recording_resolve_rate)
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    returns = portfolio.get_returns()
+    usd_returns = (104.5 / 90.0 - 1.0, 92.0 / 104.5 - 1.0, 109.2 / 92.0 - 1.0)
+    eur_returns = (101.0 / 100.0 - 1.0, 99.0 / 101.0 - 1.0, 104.0 / 99.0 - 1.0)
+    assert list(returns.index) == list(common_dates[1:])
+    assert list(returns["US_ASSET"]) == pytest.approx(usd_returns)
+    assert list(returns["EU_ASSET"]) == pytest.approx(eur_returns)
+    assert set(requested_dates) <= set(common_dates)
+
+    requested_dates.clear()
+    alignment = portfolio.alignment_summary()
+    assert alignment["union_dates"] == 6
+    assert alignment["common_dates"] == 4
+    assert requested_dates == []
+
+    with pytest.raises(ValueError, match="2025-01-02"):
+        portfolio.get_reporting_prices()
+
+    requested_dates.clear()
+    portfolio.summary()
+    portfolio.max_drawdown()
+    portfolio.sharpe_ratio()
+    portfolio.value_at_risk()
+    portfolio.conditional_value_at_risk()
+    portfolio.report()
+    portfolio.simulate_monte_carlo(MonteCarloParameters(n_paths=2, horizon=3, seed=42))
+    portfolio.plots_report()
+    plt.close("all")
+
+    assert requested_dates
+    assert set(requested_dates) <= set(common_dates)
+
+
+def test_analysis_rejects_missing_rate_on_common_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stale rate on a shared date fails without first requesting excluded dates."""
+    usd_dates = pd.DatetimeIndex(
+        ["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09"]
+    )
+    common_dates = usd_dates[2:]
+    usd_asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([80.0, 90.0, 100.0, 110.0, 100.0, 120.0], index=usd_dates),
+        quote_currency="USD",
+    )
+    eur_asset = PriceSeries(
+        ticker="EU_ASSET",
+        prices=pd.Series([100.0, 101.0, 99.0, 104.0], index=common_dates),
+        quote_currency="EUR",
+    )
+    rates = _exchange_rates(
+        [
+            _rate(
+                "USD/EUR",
+                [0.9, 0.95, 0.92],
+                [date.date().isoformat() for date in common_dates[:3]],
+            )
+        ],
+        max_age_days=0,
+    )
+    portfolio = Portfolio(
+        assets={usd_asset.ticker: usd_asset, eur_asset.ticker: eur_asset},
+        weights={usd_asset.ticker: 0.5, eur_asset.ticker: 0.5},
+        reporting_currency="EUR",
+        exchange_rates=rates,
+    )
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    for action in (portfolio.get_returns, portfolio.report, portfolio.plots_report):
+        with pytest.raises(ValueError, match="obsoleto") as error:
+            action()
+        assert "2025-01-02" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "second_dates",
+    [
+        ["2025-02-03", "2025-02-04"],
+        ["2025-01-02"],
+    ],
+)
+def test_analysis_rejects_insufficient_common_calendar(
+    second_dates: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Disjoint and single-date intersections cannot feed analytical consumers."""
+    first = PriceSeries(
+        ticker="FIRST",
+        prices=pd.Series([10.0, 11.0], index=pd.DatetimeIndex(["2025-01-02", "2025-01-03"])),
+        quote_currency="EUR",
+    )
+    second = PriceSeries(
+        ticker="SECOND",
+        prices=pd.Series(
+            [20.0 + position for position in range(len(second_dates))],
+            index=pd.DatetimeIndex(second_dates),
+        ),
+        quote_currency="EUR",
+    )
+    portfolio = Portfolio(
+        assets={first.ticker: first, second.ticker: second},
+        weights={first.ticker: 0.5, second.ticker: 0.5},
+        reporting_currency="EUR",
+    )
+    monkeypatch.setattr(plt, "show", lambda: None)
+
+    for action in (portfolio.get_returns, portfolio.report, portfolio.plots_report):
+        with pytest.raises(ValueError, match="no comparten al menos dos fechas"):
+            action()
+
+
+@pytest.mark.parametrize(
+    ("last_date", "fails"),
+    [
+        ("2025-01-10", False),
+        ("2025-01-11", True),
+    ],
+)
+def test_analysis_uses_four_day_rate_carry_limit(
+    last_date: str,
+    *,
+    fails: bool,
+) -> None:
+    """A four-day-old rate remains usable, while a fifth day is rejected."""
+    usd_dates = pd.DatetimeIndex(["2025-01-06", "2025-01-07", last_date])
+    asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([100.0, 110.0, 120.0], index=usd_dates),
+        quote_currency="USD",
+    )
+    rates = _exchange_rates([_rate("USD/EUR", [0.9], ["2025-01-06"])])
+    portfolio = Portfolio(
+        assets={asset.ticker: asset},
+        weights={asset.ticker: 1.0},
+        reporting_currency="EUR",
+        exchange_rates=rates,
+    )
+
+    if fails:
+        with pytest.raises(ValueError, match="obsoleto"):
+            portfolio.get_returns()
+    else:
+        assert len(portfolio.get_returns()) == 2
 
 
 def test_portfolio_identity_conversion_needs_no_rates() -> None:

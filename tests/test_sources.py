@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self, cast
 
 import pandas as pd
 import pytest
+from yfinance.exceptions import YFRateLimitError  # type: ignore[import-untyped]
 
 from quantfolio.currency import ExchangeRates
 from quantfolio.models import PriceSeries
@@ -73,6 +74,13 @@ def test_abstract_price_source_members_raise_not_implemented() -> None:
         _ = bare.name
     with pytest.raises(NotImplementedError):
         bare.get_prices("AAA", "2025-01-02")
+
+
+def test_price_source_cache_namespace_defaults_to_name() -> None:
+    """Providers without explicit semantics reuse their visible name as the cache namespace."""
+    source = StubSource(TRADING_DATES, name="Fake Provider")
+
+    assert source.cache_namespace == "Fake Provider"
 
 
 def test_get_many_returns_one_series_per_ticker() -> None:
@@ -492,6 +500,37 @@ def test_cache_uses_a_provider_slug_directory(tmp_path: Path) -> None:
     assert cached.name == "Fake Provider (cache)"
 
 
+def test_cache_rechecks_namespace_after_successful_download(tmp_path: Path) -> None:
+    """A namespace changed during a request selects the write directory after the download."""
+
+    class SwitchingSource(StubSource):
+        """Change the semantic namespace while returning a successful response."""
+
+        def __init__(self) -> None:
+            super().__init__(TRADING_DATES)
+            self.namespace = "before"
+
+        @property
+        def cache_namespace(self) -> str:
+            """Return the namespace in force at this instant."""
+            return self.namespace
+
+        def get_prices(
+            self, ticker: str, start: DateLike, end: DateLike | None = None
+        ) -> PriceSeries:
+            """Switch namespaces before returning the downloaded series."""
+            asset = super().get_prices(ticker, start, end)
+            self.namespace = "after"
+            return asset
+
+    cached = CachedPriceSource(SwitchingSource(), cache_dir=tmp_path)
+
+    cached.get_prices("AAA", "2025-01-02", "2025-01-20")
+
+    assert not (tmp_path / "before" / "AAA.csv").exists()
+    assert (tmp_path / "after" / "AAA.csv").is_file()
+
+
 def test_cache_refresh_forces_downloads(tmp_path: Path) -> None:
     """The refresh flag bypasses valid cache files."""
     upstream = StubSource(TRADING_DATES)
@@ -760,6 +799,34 @@ def test_kraken_explicit_pair_supplies_currency(monkeypatch: pytest.MonkeyPatch)
     assert asset.quote_currency == "USD"
 
 
+@pytest.mark.parametrize(
+    ("symbol", "market_name", "expected"),
+    [
+        ("BTC/USD", "XXBTZUSD", "USD"),
+        ("BTC/EUR", "XXBTZEUR", "EUR"),
+        ("ETH/BTC", "XETHXXBT", None),
+        ("BTC/USDT", "XBTUSDT", None),
+    ],
+)
+def test_kraken_crypto_quote_is_ecb_fiat_only(
+    monkeypatch: pytest.MonkeyPatch,
+    symbol: str,
+    market_name: str,
+    expected: str | None,
+) -> None:
+    """Kraken only labels crypto markets whose quote asset is an ECB fiat currency."""
+
+    def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        if "AssetPairs" in url:
+            return _FakeResponse({"error": [], "result": {"PAIR": {"wsname": market_name}}})
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    assert KrakenSource().get_prices(symbol, "2025-01-02").quote_currency == expected
+
+
 def test_yahoo_missing_or_invalid_metadata_is_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     """A metadata failure does not silently assign a currency."""
     monkeypatch.setattr(
@@ -777,6 +844,27 @@ def test_yahoo_missing_or_invalid_metadata_is_unknown(monkeypatch: pytest.Monkey
     assert YahooFinanceSource().get_prices("AAA", "2025-01-02").quote_currency is None
 
 
+def test_yahoo_rate_limit_in_metadata_keeps_prices(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A metadata-only rate limit cannot discard successfully downloaded prices."""
+    monkeypatch.setattr(
+        "quantfolio.sources.yahoo.yf.download", lambda *_args, **_kwargs: _price_frame()
+    )
+
+    class Ticker:
+        def __init__(self, _symbol: str) -> None:
+            pass
+
+        def get_history_metadata(self) -> dict[str, str]:
+            raise YFRateLimitError
+
+    monkeypatch.setattr("quantfolio.sources.yahoo.yf.Ticker", Ticker)
+    asset = YahooFinanceSource().get_prices("AAA", "2025-01-02")
+
+    assert list(asset.prices) == pytest.approx([10.0, 11.0, 12.0])
+    assert asset.quote_currency is None
+    assert asset.quote_unit is None
+
+
 def test_kraken_compact_pair_uses_market_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     """Compact pair names use the provider's market metadata."""
 
@@ -788,6 +876,22 @@ def test_kraken_compact_pair_uses_market_metadata(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
     assert KrakenSource().get_prices("XBTUSD", "2025-01-02").quote_currency == "USD"
+
+
+def test_kraken_malformed_compact_market_name_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A malformed market name cannot be split into an inferred quote currency."""
+
+    def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
+        del timeout
+        if "AssetPairs" in url:
+            return _FakeResponse({"error": [], "result": {"XXBTZUSD": {"wsname": "XBTUSD"}}})
+        return _FakeResponse(_kraken_payload())
+
+    monkeypatch.setattr("quantfolio.sources.kraken.urlopen", fake_urlopen)
+
+    assert KrakenSource().get_prices("XBTUSD", "2025-01-02").quote_currency is None
 
 
 def test_provider_currencies_drive_cached_portfolio_conversion(

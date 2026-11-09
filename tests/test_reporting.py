@@ -60,6 +60,33 @@ def _build_reporting_currency_portfolio() -> Portfolio:
     )
 
 
+def _build_golden_conversion_portfolio() -> Portfolio:
+    """Return the four-date currency-conversion consumer fixture."""
+    dates = pd.DatetimeIndex(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"])
+    usd_asset = PriceSeries(
+        ticker="US_ASSET",
+        prices=pd.Series([100.0, 110.0, 100.0, 120.0], index=dates),
+        quote_currency="USD",
+    )
+    eur_asset = PriceSeries(
+        ticker="EU_ASSET",
+        prices=pd.Series([100.0, 101.0, 99.0, 104.0], index=dates),
+        quote_currency="EUR",
+    )
+    usd_eur = PriceSeries(
+        ticker="FX:USD/EUR",
+        prices=pd.Series([0.90, 0.95, 0.92, 0.91], index=dates),
+        source="Manual FX input",
+        quote_currency="EUR",
+    )
+    return Portfolio(
+        assets={usd_asset.ticker: usd_asset, eur_asset.ticker: eur_asset},
+        weights={usd_asset.ticker: 0.5, eur_asset.ticker: 0.5},
+        reporting_currency="EUR",
+        exchange_rates=ExchangeRates([usd_eur]),
+    )
+
+
 def test_report_aligns_the_returns_twice(monkeypatch: pytest.MonkeyPatch) -> None:
     """The report computes the aligned returns once for the series and once inside summary."""
     calls: list[int] = []
@@ -191,6 +218,142 @@ def test_plot_portfolio_report_uses_reporting_currency_prices(
     assert values == pytest.approx([100.0, 104.5 / 90.0 * 100.0, 99.75 / 90.0 * 100.0])
 
 
+def test_converted_series_drives_all_consumers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Converted prices feed returns, report metrics, simulation and every plot panel."""
+    monkeypatch.setattr(plt, "show", lambda: None)
+    portfolio = _build_golden_conversion_portfolio()
+    expected_asset_returns = np.array(
+        [
+            [104.5 / 90.0 - 1.0, 101.0 / 100.0 - 1.0],
+            [92.0 / 104.5 - 1.0, 99.0 / 101.0 - 1.0],
+            [109.2 / 92.0 - 1.0, 104.0 / 99.0 - 1.0],
+        ]
+    )
+    expected_returns = expected_asset_returns.mean(axis=1)
+    actual_returns = portfolio.get_returns()
+
+    assert actual_returns.iloc[0, 0] == pytest.approx(0.1611111111111111)
+    np.testing.assert_allclose(actual_returns.to_numpy(), expected_asset_returns)
+    np.testing.assert_allclose(portfolio.portfolio_returns().to_numpy(), expected_returns)
+
+    expected_sharpe = expected_returns.mean() * 252 / (expected_returns.std(ddof=1) * np.sqrt(252))
+    threshold = np.quantile(expected_returns, 0.05)
+    expected_var = -threshold
+    expected_cvar = -expected_returns[expected_returns <= threshold].mean()
+    log_drift = float(np.log1p(expected_returns).mean() * 252)
+    report = portfolio.report()
+
+    assert f"| Rentabilidad media diaria | {expected_returns.mean():.4%} |" in report
+    assert f"| Ratio de Sharpe (rf=0.00%) | {expected_sharpe:.2f} |" in report
+    assert f"| VaR histórico diario (95%) | {expected_var:.2%} |" in report
+    assert f"| CVaR histórico diario (95%) | {expected_cvar:.2%} |" in report
+    assert f"| Deriva del logaritmo usada por Monte Carlo | {log_drift:.2%} |" in report
+    assert "| Primera observación | Última observación | Observaciones | Arrastres |" in report
+    assert "| US_ASSET | FX:USD/EUR | Manual FX input | 2025-01-02 | 2025-01-07 | 4 | 0 |" in report
+    assert "2025-01-02, 2025-01-03" not in report
+
+    simulation = portfolio.simulate_monte_carlo(
+        MonteCarloParameters(
+            n_paths=1,
+            horizon=252,
+            initial_value=100.0,
+            volatility_assumption=0.0,
+            seed=42,
+        )
+    )
+    assert simulation.iloc[-1, 0] == pytest.approx(100.0 * np.exp(log_drift))
+
+    portfolio.plots_report()
+    axes = {axis.get_title(): axis for axis in plt.gcf().axes}
+    prices_axis = axes["Evolución de precios en EUR (base 100)"]
+    price_lines = {line.get_label(): line for line in prices_axis.lines}
+    np.testing.assert_allclose(
+        np.asarray(price_lines["US_ASSET"].get_ydata(), dtype=float),
+        np.array([100.0, 104.5 / 90.0 * 100.0, 92.0 / 90.0 * 100.0, 109.2 / 90.0 * 100.0]),
+    )
+    np.testing.assert_allclose(
+        np.asarray(price_lines["EU_ASSET"].get_ydata(), dtype=float),
+        np.array([100.0, 101.0, 99.0, 104.0]),
+    )
+
+    cumulative_axis = axes["Rentabilidad acumulada por activo"]
+    cumulative_lines = {line.get_label(): line for line in cumulative_axis.lines}
+    np.testing.assert_allclose(
+        np.asarray(cumulative_lines["US_ASSET"].get_ydata(), dtype=float),
+        np.array([104.5, 92.0, 109.2]) / 90.0 - 1.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(cumulative_lines["EU_ASSET"].get_ydata(), dtype=float),
+        np.array([101.0, 99.0, 104.0]) / 100.0 - 1.0,
+    )
+
+    correlation_axis = axes["Correlación entre activos"]
+    np.testing.assert_allclose(
+        np.asarray(correlation_axis.images[0].get_array()),
+        np.corrcoef(expected_asset_returns.T),
+    )
+    value_axis = axes["Evolución del valor de la cartera (base 100)"]
+    np.testing.assert_allclose(
+        np.asarray(value_axis.lines[0].get_ydata(), dtype=float),
+        100.0 * np.cumprod(1.0 + expected_returns),
+    )
+    plt.close("all")
+
+
+def test_report_summarizes_manual_and_ecb_sources() -> None:
+    """Large rate traces are summarized by source without enumerating every date."""
+    dates = pd.date_range("2024-01-01", periods=600, freq="D")
+    rate_dates = dates[::2]
+    assets = {
+        "US_ASSET": PriceSeries(
+            ticker="US_ASSET",
+            prices=pd.Series(100.0 + np.arange(len(dates)) / 100.0, index=dates),
+            quote_currency="USD",
+        ),
+        "GB_ASSET": PriceSeries(
+            ticker="GB_ASSET",
+            prices=pd.Series(50.0 + np.arange(len(dates)) / 200.0, index=dates),
+            quote_currency="GBP",
+        ),
+        "EU_ASSET": PriceSeries(
+            ticker="EU_ASSET",
+            prices=pd.Series(10.0 + np.arange(len(dates)) / 10.0, index=dates),
+            quote_currency="EUR",
+        ),
+    }
+    manual_rate = PriceSeries(
+        ticker="FX:USD/EUR",
+        prices=pd.Series(0.9, index=rate_dates),
+        source="Manual rates",
+        quote_currency="EUR",
+    )
+    ecb_rate = PriceSeries(
+        ticker="FX:GBP/EUR",
+        prices=pd.Series(1.2, index=rate_dates),
+        source="ECB reference rates",
+        quote_currency="EUR",
+    )
+    portfolio = Portfolio(
+        assets=assets,
+        weights=dict.fromkeys(assets, 1.0),
+        reporting_currency="EUR",
+        exchange_rates=ExchangeRates([manual_rate, ecb_rate]),
+    )
+
+    report = portfolio.report()
+    manual_row = next(line for line in report.splitlines() if "Manual rates" in line)
+    ecb_row = next(line for line in report.splitlines() if "ECB reference rates" in line)
+    identity_row = next(
+        line for line in report.splitlines() if line.startswith("| EU_ASSET | - | No requerida |")
+    )
+
+    assert "| Primera observación | Última observación | Observaciones | Arrastres |" in report
+    assert f"| {rate_dates[0]:%Y-%m-%d} | {rate_dates[-1]:%Y-%m-%d} | 300 | 300 |" in manual_row
+    assert f"| {rate_dates[0]:%Y-%m-%d} | {rate_dates[-1]:%Y-%m-%d} | 300 | 300 |" in ecb_row
+    assert "ECB" not in manual_row
+    assert f"| {dates[0]:%Y-%m-%d} | {dates[-1]:%Y-%m-%d} | 600 | 0 |" in identity_row
+
+
 def test_legacy_report_discloses_unassessed_currency_conversion() -> None:
     """Currency-free portfolios state that conversion was not assessed."""
     report = _build_portfolio().report()
@@ -229,6 +392,9 @@ def test_legacy_currency_diagnostics_are_empty_with_stable_columns() -> None:
         "applied_rate",
         "inverted",
         "carried_forward",
+        "from_currency",
+        "to_currency",
+        "leg_index",
     ]
 
 
@@ -239,8 +405,10 @@ def test_currency_report_includes_rate_trace_and_daily_cutoff_limit() -> None:
     assert "Divisa de reporte: EUR" in report
     assert "FX:USD/EUR" in report
     assert "Manual FX input" in report
-    assert "2025-01-02, 2025-01-03" in report
-    assert "| 1 |" in report
+    assert "| Primera observación | Última observación | Observaciones | Arrastres |" in report
+    assert (
+        "| US_ASSET | FX:USD/EUR | Manual FX input | 2025-01-02 | 2025-01-03 | 2 | 1 |"
+    ) in report
     assert "corte intradía" in report
 
 
