@@ -1,14 +1,14 @@
-# Equity Securities (Common Shares)
+# Equity securities: common shares
 
-A **common share** (also called common stock or equity) represents a residual ownership claim on a company: common
-shareholders own part of the company, may receive dividends when declared, and generally have voting rights. Their claim
-ranks after the claims of creditors and preferred shareholders.
+A **common share** (also called common stock or equity) gives its holder a residual ownership claim on a company.
+Common shareholders own part of the company, may receive dividends when declared, and generally have voting rights.
+Their claim ranks after the claims of creditors and preferred shareholders.
 
-Key terms. A **ticker** or **symbol** is the exchange's short code for a security. An **ISIN** (International Securities
-Identification Number) is a 12-character identifier assigned under the ISO 6166 standard by National Numbering Agencies,
-coordinated by ANNA. An **exchange listing** states where the security is admitted to trading. The **currency
-denomination** is the currency in which the security is priced. **Market capitalization** is the total market value of a
-company's equity.
+Several terms identify a share and describe its market value. A **ticker** or **symbol** is the exchange's short code
+for a security. An **ISIN** (International Securities Identification Number) is a 12-character identifier assigned
+under ISO 6166 by National Numbering Agencies, coordinated by ANNA. An **exchange listing** states where the security
+is admitted to trading. The **currency denomination** is the currency in which the security is priced. **Market
+capitalization** is the total market value of a company's equity.
 
 Companies distribute value to shareholders through corporate actions. **Dividends** are payments made to shareholders
 out of earnings. A **stock split** changes the number of shares and the price per share while leaving the shareholder's
@@ -19,10 +19,11 @@ includes dividends (assumed to be reinvested). An index or portfolio may be quot
 
 ## Why it matters for the B1-T1 toolkit
 
-The toolkit models equities and portfolios and produces statistics and reports. Ownership terms, capitalization and the
-dividend/split distinction determine how instruments are identified and how their returns are interpreted.
+The toolkit models equities and portfolios and reports their statistics. Ownership terms, market capitalization and
+the distinction between dividends and splits determine how an instrument is identified and how its returns should be
+read.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Common stock conveys residual ownership; companies may also issue preferred stock.
 - Market capitalization = shares outstanding × market price per share.

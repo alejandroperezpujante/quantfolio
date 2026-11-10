@@ -1,35 +1,33 @@
-# Trading Calendars and Time Alignment
+# Trading calendars and time alignment
 
-An exchange trading calendar defines the days and trading sessions on which a market operates. **Trading days** are the
-days a market is open, which are a subset of **calendar days**; market holidays and half-days remove or shorten
-sessions. A **business day**, in the financial-contracts sense, is a day on which commercial banks and foreign-exchange
-markets settle payments and are open for general business (ISDA).
+An exchange trading calendar defines the days and sessions on which a market operates. **Trading days** are the days
+the market is open and form a subset of **calendar days**. Holidays and half-days remove or shorten sessions. In
+financial contracts, a **business day** is a day when commercial banks and foreign-exchange markets settle payments
+and are open for general business (ISDA).
 
-Each exchange also has session times expressed in a local time zone — for example, the NYSE core trading session runs
-from 09:30 to 16:00 Eastern Time, and BME's open market runs from 09:00 to 17:30 CET. Because exchanges observe
-different holidays and operate in different time zones, price series from different markets carry different timestamps
-and different sets of dates. Combining them produces gaps and misaligned observations, so the series must be placed on a
-common date/time axis (temporal alignment).
+Exchanges publish session times in their local time zone. The NYSE core session, for example, runs from 09:30 to
+16:00 Eastern Time, while BME's open market runs from 09:00 to 17:30 CET. Different holidays and time zones give
+price series different timestamps and different sets of dates. When the series are combined, those differences create
+gaps and misaligned observations. Temporal alignment places them on a common date or time axis.
 
-Dates may also require adjustment conventions. Where a nominal date would fall on a non-business day, business-day
-conventions such as Following, Modified Following and Preceding move it to a different date. Timestamps are commonly
-stored in UTC or in exchange local time. The IANA time-zone database is the reference for time-zone and daylight-saving
-rules, and open-source exchange-calendar libraries (for example, `exchange_calendars`) encode per-exchange sessions,
-holidays and half-days.
+Dates sometimes need a business-day convention. If a nominal date falls on a non-business day, Following, Modified
+Following or Preceding moves it to another date. Timestamps are usually stored in UTC or in exchange local time. The
+IANA time-zone database supplies the rules for time zones and daylight saving. Open-source libraries such as
+`exchange_calendars` encode each exchange's sessions, holidays and half-days.
 
 ## Why it matters for the B1-T1 toolkit
 
-Series drawn from several venues must be combined into one time axis. Exchange calendars explain why missing dates and
-differing timestamps occur, and why simple date-based merging of unaligned series is insufficient.
+The toolkit combines series from several venues on one time axis. Exchange calendars explain why dates are missing and
+why timestamps differ. They also show why a simple merge on date is not enough when the source series are unaligned.
 
-## Key facts and formulas
+## Facts and formulas
 
-- NYSE core trading session: 09:30–16:00 ET; certain dates close early at 13:00 ET (for example, the day after
+- NYSE core trading session: 09:30 to 16:00 ET; certain dates close early at 13:00 ET (for example, the day after
   Thanksgiving and 24 December).
 - BME 2026 non-trading days: 1 January, 3 April, 6 April, 1 May, 25 December; 24 and 31 December trade until 14:00 CET.
-- ISDA business-day conventions: *Following* = first following business day; *Modified Following* = first following
-  business day unless it falls in the next calendar month, in which case the first preceding business day; *Preceding* =
-  first preceding business day.
+- ISDA business-day conventions: *Following* means the first following business day. *Modified Following* means the
+  first following business day unless it falls in the next calendar month, in which case it means the first preceding
+  business day. *Preceding* means the first preceding business day.
 - The IANA time-zone database maintains the world's time-zone and daylight-saving-time rules.
 - Exchange-calendar libraries encode each exchange's holidays, sessions and half-days so that trading days can be
   enumerated.

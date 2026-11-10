@@ -1,24 +1,27 @@
-# Common Macroeconomic Indicators
+# Common macroeconomic indicators
 
-Macroeconomic indicators are aggregate statistics describing the state and direction of an economy. **Gross domestic
-product (GDP)** measures the market value of the final goods and services produced in an economy over a period, without
-double-counting intermediate goods. *Nominal* GDP is valued at current prices; *real* GDP is adjusted for price changes
-and is the standard measure of growth. **Inflation** is the rate at which the general price level rises. It is tracked
-with consumer price indices — the U.S. Consumer Price Index (CPI), the euro-area Harmonised Index of Consumer Prices
-(HICP) and the U.S. Personal Consumption Expenditures (PCE) price index. The **year-over-year (annual) rate** compares a
-price index with its value twelve months earlier. **Interest rates** divide into central-bank *policy rates* and *market
-rates*. The Federal Reserve sets a target range for the federal funds rate; the ECB sets a deposit facility rate, main
-refinancing rate and marginal lending rate. Sovereign bond **yields** are market-determined, and the **yield curve** is
-the relationship between yields and remaining maturity (the term structure). The **unemployment rate** is the share of
-the labour force that is jobless and actively seeking work.
+Macroeconomic indicators are aggregate statistics that describe the state and direction of an economy. **Gross
+domestic product (GDP)** is the market value of final goods and services produced over a period, counted without
+duplicating intermediate goods. *Nominal* GDP uses current prices. *Real* GDP adjusts for price changes and is the
+standard measure of growth.
+
+**Inflation** is the rate at which the general price level rises. It is commonly tracked with the U.S. Consumer Price
+Index (CPI), the euro-area Harmonised Index of Consumer Prices (HICP) and the U.S. Personal Consumption Expenditures
+(PCE) price index. The **year-over-year rate** compares a price index with its value twelve months earlier.
+
+**Interest rates** include central-bank *policy rates* and *market rates*. The Federal Reserve sets a target range
+for the federal funds rate. The ECB sets a deposit facility rate, a main refinancing rate and a marginal lending
+rate. Sovereign bond **yields** are set by the market. The **yield curve** relates yields to remaining maturity and
+is also called the term structure. The **unemployment rate** is the share of the labour force that is jobless and
+actively seeking work.
 
 ## Why it matters for the B1-T1 toolkit
 
-These series are the most common "extra data type" ingested alongside equity and index prices, and equity returns are
-routinely interpreted against inflation, policy rates and growth. Because releases are scheduled and lag their reference
-period, the calendar timing is part of the background.
+These series are a common "extra data type" alongside equity and index prices. Analysts often read equity returns in
+the context of inflation, policy rates and growth. Releases follow a calendar and lag their reference period, so their
+timing matters.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Expenditure identity: GDP = Consumption + Investment + Government spending + (Exports − Imports).
 - Real GDP = nominal GDP adjusted for price changes; the GDP deflator is the broadest domestic price measure.
@@ -31,13 +34,12 @@ period, the calendar timing is part of the background.
 - Releases lag the reference period and are revised: BLS publishes the CPI around the middle of the following month; BEA
   issues GDP in successive (advance, preliminary, third) estimates; official release calendars list forthcoming dates.
 
-When the toolkit ingests these series it goes through ALFRED's archival CSV export, FRED's vintage database. Each
+The toolkit ingests these series through ALFRED, FRED's vintage database, using its archival CSV export. Each
 `MacroSeries` records the vintage it comes from in its `vintage_date` field, and `get_series(..., as_of=...)` returns the
-values actually published as of a past date. Revisions and release lags therefore cannot leak into historical analysis
-(the look-ahead bias these would otherwise introduce is avoided), and observations not yet released at the requested
-vintage remain absent from the series. When the endpoint serves a vintage other than the one requested — for example
-when ALFRED clamps a future date to its latest vintage — `get_series` raises `ValueError` instead of stamping the
-values with a date they do not belong to.
+values published as of a past date. This keeps revisions and release lags out of historical analysis and avoids
+look-ahead bias. Observations not yet released at the requested vintage remain absent from the series. If the endpoint
+serves a different vintage from the one requested, for example when ALFRED clamps a future date to its latest vintage,
+`get_series` raises `ValueError`. It does not label the values with a date they do not belong to.
 
 ## Sources
 
@@ -56,5 +58,5 @@ values with a date they do not belong to.
   (accessed 2026-10-01)
 - <https://www.ecb.europa.eu/press/calendars/statscal/html/index.en.html> (accessed 2026-10-01)
 - <https://fred.stlouisfed.org/> (accessed 2026-10-01)
-- Note: the IMF World Economic Outlook and OECD indicator pages could not be retrieved at the time of writing (HTTP 403
-  responses) and are therefore not cited.
+- The IMF World Economic Outlook and OECD indicator pages returned HTTP 403 at the time of writing, so they are not
+  cited.

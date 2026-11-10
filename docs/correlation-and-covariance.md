@@ -1,19 +1,21 @@
-# Correlation and Covariance
+# Correlation and covariance
 
-Covariance and correlation are statistical measures of how two variables move together. For two random variables $X$
-and $Y$ with means $\mu_X$ and $\mu_Y$, the covariance is the expected product of their deviations from their
-means: $\operatorname{cov} (X, Y) = \mathbb{E}[(X - \mu_X)(Y - \mu_Y)]$. Its sign indicates the direction of the linear
-relationship (positive when the variables tend to be above or below their means together), but its magnitude depends on
-the units and scale of the variables. The Pearson correlation coefficient standardises the covariance by the two
-standard deviations, producing a unit-free measure between $-1$ and $+1$.
+Covariance and correlation measure how two variables move together. For random variables $X$ and $Y$ with means
+$\mu_X$ and $\mu_Y$, covariance is the expected product of their deviations from those means:
+$\operatorname{cov} (X, Y) = \mathbb{E}[(X - \mu_X)(Y - \mu_Y)]$. Its sign gives the direction of the linear
+relationship. It is positive when the variables tend to be above or below their means together. Its magnitude depends
+on the units and scale of the variables.
+
+The Pearson correlation coefficient divides covariance by the product of the two standard deviations. The result has
+no units and lies between $-1$ and $+1$.
 
 ## Why it matters for the B1-T1 toolkit
 
-Covariance and correlation quantify the co-movement of asset returns, which is the statistical basis for the
-diversification benefit of holding imperfectly correlated assets. The covariance matrix is the input that couples assets
-in portfolio-risk calculations.
+Covariance and correlation quantify how asset returns move together. That relationship is the statistical basis for
+the diversification benefit of holding imperfectly correlated assets. In portfolio-risk calculations, the covariance
+matrix couples those assets.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Covariance:
 

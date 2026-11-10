@@ -1,17 +1,16 @@
-# Background documentation
+# Documentation
 
-Researched background material for the **B1-T1 — Toolkit de Extracción, Análisis Bursátil y Gestión de Carteras**
-assignment. These documents contain only definitions, standard formulas and cited facts. They do *not* contain
-solutions, implementation guidance, or design advice.
+Reference material for the **B1-T1, Toolkit de Extracción, Análisis Bursátil y Gestión de Carteras** assignment.
+Most pages explain financial concepts, standard formulas and cited facts. The architecture page describes the
+package design, and the inflation-adjusted portfolio page documents a toolkit-specific calculation.
 
 - Assignment text (extracted): [assignment/Taller_B1_T1.md](assignment/Taller_B1_T1.md)
-- Project documentation (not background research): [architecture.md](architecture.md) — UML class diagram and
-  data-flow diagram of the `quantfolio` package.
-- Test-suite migration evidence: [testing/legacy-suite-crosswalk.md](testing/legacy-suite-crosswalk.md) — ownership,
-  disposition and rationale for every legacy test function.
+- Package architecture: [architecture.md](architecture.md), with UML class and data-flow diagrams.
+- Test-suite migration evidence: [testing/legacy-suite-crosswalk.md](testing/legacy-suite-crosswalk.md), with the
+  ownership and disposition of every legacy test function.
 - All sources were accessed on **2026-10-01**.
-- Trusted-source preference: central banks, BIS, IMF, World Bank, OECD, Eurostat, regulators, official index providers,
-  exchanges, and university/established references. Investopedia and Wikipedia appear only as secondary/supporting
+- Preferred sources are central banks, BIS, IMF, World Bank, OECD, Eurostat, regulators, official index providers,
+  exchanges and university or established references. Investopedia and Wikipedia appear only as supporting
   references.
 
 ## Index
@@ -31,13 +30,13 @@ solutions, implementation guidance, or design advice.
 | [monte-carlo-simulation-in-finance.md](monte-carlo-simulation-in-finance.md)       | Random sampling, law of large numbers, pseudo-randomness, uses and $1/\sqrt{N}$ convergence.            | 3       |
 | [portfolio-risk-measures.md](portfolio-risk-measures.md)                           | VaR (historical, parametric, Monte Carlo), expected shortfall, maximum drawdown and beta.               | 7       |
 | [macroeconomic-indicators.md](macroeconomic-indicators.md)                         | GDP, inflation (CPI/HICP/PCE), interest rates and yield curves, unemployment, release calendars.        | 13      |
-| [inflation-adjusted-portfolio.md](inflation-adjusted-portfolio.md)                 | Cálculo mensual de rentabilidad real, informe comparado y simulación con inflación fija.                | —       |
+| [inflation-adjusted-portfolio.md](inflation-adjusted-portfolio.md)                 | Cálculo mensual de rentabilidad real, informe comparado y simulación con inflación fija.                | n/a     |
 | [financial-statement-fundamentals.md](financial-statement-fundamentals.md)         | Balance sheet, income statement, cash flow, accounting identity, filings and common ratios.             | 6       |
 
 ## Notes on sourcing
 
-- Some official pages (S&P Dow Jones Indices methodology, IMF World Economic Outlook, OECD indicator pages) returned
-  HTTP 403 to automated retrieval; the affected documents state this caveat explicitly rather than substituting invented
-  facts.
-- Documents that depend mainly on university or established-general references (for example `modern-portfolio-theory.md`
-  or `monte-carlo-simulation-in-finance.md`) count a smaller number of primary sources.
+- Some official pages (S&P Dow Jones Indices methodology, IMF World Economic Outlook and OECD indicator pages)
+  returned HTTP 403 during automated retrieval. The affected documents say so instead of filling the gap with
+  unsupported facts.
+- Documents built mainly from university or general references, such as `modern-portfolio-theory.md` and
+  `monte-carlo-simulation-in-finance.md`, cite fewer primary sources.

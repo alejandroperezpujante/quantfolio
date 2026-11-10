@@ -1,17 +1,17 @@
-# Portfolio Return and Variance
+# Portfolio return and variance
 
-Portfolio-level return and risk are statistical quantities that combine the properties of the individual assets in a
-portfolio. The expected return of a portfolio is the weighted average of the assets' expected returns, where the weights
-are the fractions of wealth invested and sum to one. The risk of the portfolio, measured by the variance (or standard
-deviation) of its return, is not the weighted average of the asset variances: it also depends on the covariances between
-every pair of assets. These relationships are the algebraic content of mean-variance portfolio analysis.
+A portfolio's return and risk combine the properties of its individual assets. Expected portfolio return is the
+weighted average of the assets' expected returns. The weights are the fractions of wealth invested and sum to one.
+Portfolio risk, measured by the variance or standard deviation of return, also depends on the covariance between
+every pair of assets. It is not simply the weighted average of the asset variances. These relationships form the
+algebra of mean-variance portfolio analysis.
 
 ## Why it matters for the B1-T1 toolkit
 
-A multi-asset toolkit reports and summarises portfolio expected return and risk, and the covariance matrix is the object
-that couples the individual assets. The formulas below state the standard definitions these quantities follow.
+A multi-asset toolkit reports and summarizes expected portfolio return and risk. The covariance matrix couples the
+individual assets, and the formulas below give the standard definitions.
 
-## Key facts and formulas
+## Facts and formulas
 
 - A portfolio is defined by weights $w_i$ with $\sum_i w_i = 1$ (negative weights indicate short positions in the
   general case).

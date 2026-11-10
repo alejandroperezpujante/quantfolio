@@ -1,21 +1,25 @@
-# Financial Returns and Annualization
+# Financial returns and annualization
 
-A return measures the change in the value of an investment over a holding period, expressed as a fraction of the initial
-value. The **simple (arithmetic) return** over one period is the percentage price change, while the **log (continuously
-compounded) return** is the natural logarithm of the price ratio. The two are related exactly
-by $r_{\text{log}} = \ln (1 + r)$. Log returns are additive over time: the log return of a multi-period holding is the
-sum of the single-period log returns, whereas simple returns combine multiplicatively through their growth factors. The
-**total return** includes both price changes and income (dividends, coupons, interest), while the **price return**
-includes only the change in price. The **arithmetic average return** is the simple mean of period returns; the
-**geometric average return** compounds the growth factors and equals the compound annual growth rate (CAGR) when periods
-are annual. The geometric mean is generally below the arithmetic mean, and the gap widens with return volatility.
+A return measures the change in an investment's value over a holding period as a fraction of its initial value. The
+**simple return**, also called the arithmetic return, is the percentage price change. The **log return**, or
+continuously compounded return, is the natural logarithm of the price ratio. The two are related exactly by
+$r_{\text{log}} = \ln (1 + r)$.
+
+Log returns add across time: the log return of a multi-period holding equals the sum of its single-period log
+returns. Simple returns instead combine multiplicatively through their growth factors. **Total return** includes
+price changes and income from dividends, coupons or interest. **Price return** includes only the price change.
+
+The **arithmetic average return** is the simple mean of period returns. The **geometric average return** compounds
+the growth factors and equals the compound annual growth rate (CAGR) when periods are annual. The geometric mean is
+usually below the arithmetic mean, and the gap widens as return volatility rises.
 
 ## Why it matters for the B1-T1 toolkit
 
-The B1-T1 toolkit works with price series, and returns are the standard transformation used to compare assets and feed
-statistical measures. The choice between simple and log returns affects which aggregation and averaging properties hold.
+The toolkit works with price series, and returns are the standard transformation for comparing assets and feeding
+statistical measures. The choice between simple and log returns determines which aggregation and averaging
+properties hold.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Simple return:
 
@@ -55,7 +59,7 @@ statistical measures. The choice between simple and log returns affects which ag
   $$
 
   equal to CAGR for annual periods.
-- AM–GM inequality:
+- AM-GM inequality:
 
   $$
   \bar{r}_{\text{geo}} \le \bar{r},

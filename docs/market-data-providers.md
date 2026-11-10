@@ -1,38 +1,40 @@
-# Programmatic Market-Data Providers (Yahoo Finance/yfinance, Alpha Vantage, Finnhub, Polygon.io)
+# Market-data APIs: Yahoo Finance, Alpha Vantage, Finnhub and Polygon.io
 
-Programmatic market-data providers expose financial time series over HTTP (and often WebSocket) interfaces, so that
-software can request prices and volumes instead of reading web pages.
+Most market-data providers expose financial time series through HTTP APIs, and some also offer WebSocket streams.
+Software can request prices and volumes directly instead of reading them from a web page.
 
-**Yahoo Finance / yfinance.** Yahoo Finance is a consumer finance portal. `yfinance` is an unofficial, open-source
-Python library that retrieves data from Yahoo Finance's publicly available APIs; it is not affiliated with, endorsed by,
-or vetted by Yahoo, and is intended for research and educational purposes. Yahoo's terms describe the Finance API as
-intended for personal use only and state that the data must not be redistributed. The library exposes historical OHLCV
-(daily and intraday), splits and dividends, and other market and fundamental data.
+**Yahoo Finance and yfinance.** Yahoo Finance is a consumer finance portal. `yfinance` is an unofficial open-source
+Python library that retrieves data from Yahoo Finance's public APIs. It is not affiliated with, endorsed by or vetted
+by Yahoo and is intended for research and education. Yahoo's terms describe the Finance API as a personal-use service
+and prohibit redistribution of its data. The library provides historical OHLCV data (daily and intraday), splits,
+dividends and other market and fundamental data.
 
-**Alpha Vantage.** An API-key service offering free JSON endpoints, with a standard free allowance of 25 API requests
-per day. It provides intraday, daily, weekly and monthly equity OHLCV, in both raw (as-traded) and
-split/dividend-adjusted forms, plus index, options, fundamental, forex, crypto and technical-indicator data.
+**Alpha Vantage.** This API-key service offers JSON endpoints, with a standard free allowance of 25 requests per day.
+It provides intraday, daily, weekly and monthly equity OHLCV in raw and split- or dividend-adjusted forms, as well as
+index, options, fundamental, forex, crypto and technical-indicator data.
 
-**Finnhub.** A REST and WebSocket API authenticated with an API key (`token`). Its free tier allows about 60 API calls
-per minute, with a hard cap of 30 API calls per second across plans; the Stock Candles (OHLCV) endpoint is a premium
-feature, while quotes, company profiles and fundamentals are available. Symbols use an `EXCHANGE:TICKER` format.
+**Finnhub.** Finnhub exposes REST and WebSocket APIs that authenticate with an API key in a `token` parameter. The
+free tier allows about 60 calls per minute, and every plan has a hard cap of 30 calls per second. Stock Candles
+(OHLCV) is a premium endpoint; quotes, company profiles and fundamentals are available. Symbols use the
+`EXCHANGE:TICKER` format.
 
-**Polygon.io.** Polygon.io renamed itself Massive.com on 30 October 2025; existing API keys and the `api.polygon.io`
-base continue to work. It provides REST, WebSocket and downloadable flat-file data. Its aggregates endpoint returns
-open, high, low, close and volume, with an `adjusted` flag that defaults to `true` and adjusts results for splits. A
-free "Stocks Basic" plan exists alongside paid tiers, and it also covers indices, options, forex and crypto.
+**Polygon.io / Massive.** Polygon.io renamed itself Massive.com on 30 October 2025. Existing API keys and the
+`api.polygon.io` base still work. The service offers REST, WebSocket and downloadable flat-file data. Its aggregates
+endpoint returns open, high, low, close and volume, with an `adjusted` flag that defaults to `true` and adjusts for
+splits. A free "Stocks Basic" plan is available alongside paid tiers. The service also covers indices, options,
+forex and crypto.
 
-Common standardized price fields are: timestamp, open, high, low, close, adjusted close and volume. **Adjusted close**
-differs from **close** because it is restated for corporate actions — stock splits and dividends — so that computed
-returns are not distorted by mechanical price changes; `close` is the raw, as-traded last price.
+The common standardized fields are timestamp, open, high, low, close, adjusted close and volume. **Adjusted close**
+restates the price for stock splits and dividends, so corporate actions do not distort calculated returns. **Close**
+is the raw, as-traded last price.
 
 ## Why it matters for the B1-T1 toolkit
 
-The toolkit is expected to ingest series from these providers and standardize them into one internal representation.
-Providers differ in field names, adjustment conventions, symbol syntax and access limits, which is why a homogeneous
-internal object is needed.
+The toolkit converts the market data it consumes into one internal representation. Field names, adjustment
+conventions, symbol syntax and access limits differ between providers, so a common object keeps the analysis layer
+independent of any one API.
 
-## Key facts and formulas
+## Facts and formulas
 
 - OHLCV: open = first price of the period; high = highest price; low = lowest price; close = last price; volume = number
   of shares traded.

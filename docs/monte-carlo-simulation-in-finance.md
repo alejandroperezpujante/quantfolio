@@ -1,23 +1,25 @@
-# Monte Carlo Simulation in Finance
+# Monte Carlo simulation in finance
 
-**Monte Carlo simulation** is a broad class of computational methods that use repeated random sampling to obtain
-numerical results. A typical procedure defines a domain of possible inputs, draws inputs randomly from a probability
-distribution over that domain, performs a deterministic computation on each draw, and aggregates the results to
-approximate a distribution, an integral, or an expected value. The method rests on the **law of large numbers**: as the
-number of independent samples grows, the sample mean converges to the population expected value. In practice, randomness
-is supplied by **pseudo-random number generators**, deterministic algorithms that produce sequences approximating
-independent uniform variates. In finance, Monte Carlo methods are used for option pricing (especially path-dependent and
-high-dimensional contracts), simulating future portfolio values, and estimating risk measures such as Value at Risk
-(VaR), which is read as a quantile of the simulated profit-and-loss distribution. Results depend on the assumed
-parameters and on the number of simulated paths and the time horizon; longer horizons compound the assumptions.
+**Monte Carlo simulation** uses repeated random sampling to produce numerical results. A typical run defines a domain
+of inputs, draws inputs from a probability distribution over that domain and computes a deterministic result for each
+draw. Aggregating the results approximates a distribution, an integral or an expected value.
+
+The method relies on the **law of large numbers**: as the number of independent samples grows, the sample mean
+converges to the population expected value. Software supplies the random inputs through **pseudo-random number
+generators**, deterministic algorithms whose sequences approximate independent uniform draws.
+
+In finance, Monte Carlo methods support option pricing, especially for path-dependent or high-dimensional contracts.
+They also simulate future portfolio values and estimate risk measures such as Value at Risk (VaR), a quantile of the
+simulated profit-and-loss distribution. Results depend on the assumed parameters, the number of paths and the time
+horizon. A longer horizon gives the assumptions more time to compound.
 
 ## Why it matters for the B1-T1 toolkit
 
-Monte Carlo simulation is the standard way to translate volatility and return assumptions into a distribution of
-possible future portfolio or price outcomes. The number of paths and the horizon are the two parameters that govern the
-precision and scope of the resulting distribution.
+Monte Carlo simulation turns return and volatility assumptions into a distribution of possible future prices or
+portfolio values. The number of paths controls the precision of that distribution, and the horizon controls its
+scope.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Monte Carlo error (standard error of the sample mean):
 
