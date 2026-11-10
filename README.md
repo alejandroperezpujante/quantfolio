@@ -53,9 +53,10 @@ falta configurar `PYTHONPATH` ni marcar carpetas como *sources root*.
 
 El repositorio incluye un entorno Linux con Python 3.14, `uv` y las herramientas de calidad fijadas por
 `uv.lock`, además de un servidor SonarQube local conectado a PostgreSQL. Requiere Docker con Docker Compose
-y Visual Studio Code con la extensión **Dev Containers**. Para abrirlo, selecciona **Dev Containers: Reopen
-in Container** desde la paleta de comandos. La primera creación construye la imagen e instala las dependencias;
-los siguientes arranques reutilizan la imagen y los volúmenes del servidor.
+y un IDE o servicio compatible con la especificación Dev Container (GitHub Codespaces y los IDE de JetBrains,
+entre otros). La configuración está en `.devcontainer/devcontainer.json`, que esas herramientas leen para
+construir y abrir el entorno. La primera creación construye la imagen e instala las dependencias; los
+siguientes arranques reutilizan la imagen y los volúmenes del servidor.
 
 Las herramientas `ruff`, `mypy` y `pre-commit` quedan instaladas y disponibles directamente en el `PATH`.
 El entorno del proyecto se encuentra en `/home/developer/quantfolio-venv`; `uv sync --frozen` lo actualiza
@@ -70,12 +71,11 @@ uv run pre-commit run --all-files
 ```
 
 SonarQube se publica en `http://localhost:9000`. En el primer acceso, inicia sesión con `admin` / `admin`,
-cambia la contraseña y crea el proyecto con la clave `quantfolio`. En la vista **CONNECTED MODE** de la
-extensión SonarQube para VS Code, crea una conexión llamada `quantfolio-local` a
-`http://sonarqube:9000` y guarda un *user token* generado en el servidor. La contraseña de administración
-y el token se guardan en el almacenamiento local de VS Code, nunca en el repositorio. La contraseña de la
-base de datos se genera al crear el entorno y queda en el archivo local ignorado `.devcontainer/sonar.env`.
-El proyecto ya está asociado a esa conexión y clave en `.vscode/settings.json`.
+cambia la contraseña y crea el proyecto con la clave `quantfolio`. En el modo conectado de SonarLint para
+tu IDE, crea una conexión llamada `quantfolio-local` a `http://sonarqube:9000` y guarda un *user token*
+generado en el servidor. La contraseña de administración y el token quedan en el almacenamiento local del
+IDE, nunca en el repositorio. La contraseña de la base de datos se genera al crear el entorno y queda en el
+archivo local ignorado `.devcontainer/sonar.env`.
 
 El servidor local usa SonarQube Community Build y sus perfiles predeterminados; no replica automáticamente
 los perfiles ni la puerta de calidad privados del servidor del equipo. El análisis en el editor es una ayuda
