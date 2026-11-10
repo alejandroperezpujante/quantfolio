@@ -1,25 +1,26 @@
-# Company Financial Statements and Fundamentals
+# Company financial statements and fundamentals
 
-Financial statements are the periodic reports through which a company presents its financial position and performance.
-The core statements are the **balance sheet**, a snapshot of what a company owns and owes at a point in time; the
-**income statement**, which reports revenue and expenses over a period and ends in net profit or loss; and the **cash
-flow statement**, which reports actual cash inflows and outflows, split into operating, investing and financing
-activities. A fourth statement, the **statement of shareholders' equity**, shows changes in owners' interests over time.
-The balance sheet is governed by the accounting identity **assets = liabilities + shareholders' equity**. Statements are
-prepared on an **accrual basis**, meaning revenue and expenses are recognised when earned or incurred rather than when
-cash changes hands; the cash flow statement reconciles accrual net income to cash by removing non-cash items such as
-depreciation. Public companies report at least **annually** and usually **quarterly**. In the United States, the annual
-report form is the **10-K** and the quarterly form is the **10-Q**, filed through the SEC's EDGAR system. Outside the
-U.S., IFRS Standards are used in more than 140 jurisdictions, with reporting forms set by local regulation. Investors
-derive **valuation and profitability ratios** from these statements.
+Financial statements are the periodic reports in which a company presents its financial position and performance.
+The **balance sheet** shows what a company owns and owes at one point in time. The **income statement** reports
+revenue and expenses over a period and ends with net profit or loss. The **cash flow statement** reports cash inflows
+and outflows from operating, investing and financing activities. A fourth statement, the **statement of shareholders'
+equity**, shows changes in owners' interests over time.
+
+The balance sheet follows the accounting identity **assets = liabilities + shareholders' equity**. Statements use an
+**accrual basis**: revenue and expenses are recognized when earned or incurred, not when cash changes hands. The cash
+flow statement reconciles accrual net income to cash by removing non-cash items such as depreciation.
+
+Public companies report at least **annually** and usually **quarterly**. In the United States, the annual report is
+Form **10-K** and the quarterly report is Form **10-Q**, both filed through the SEC's EDGAR system. Outside the U.S.,
+more than 140 jurisdictions use IFRS Standards, with local rules setting the reporting forms. Investors derive
+**valuation and profitability ratios** from these statements.
 
 ## Why it matters for the B1-T1 toolkit
 
-Company fundamentals are one of the common non-price data types for the assignment, and they are reported on a fixed
-(annual/quarterly) calendar rather than continuously. Understanding the statements is the background for interpreting
-any fundamentals series.
+Company fundamentals are a common non-price data type for the assignment. They arrive on an annual or quarterly
+calendar rather than continuously, and the statements explain what a fundamentals series represents.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Accounting identity: Assets = Liabilities + Shareholders' equity.
 - Accrual accounting recognises revenue when earned and expenses when incurred; cash accounting recognises them when
@@ -37,6 +38,6 @@ any fundamentals series.
 - <https://www.sec.gov/investor/pubs/begfinstmtguide.htm> (accessed 2026-10-01)
 - <https://www.sec.gov/edgar/searchedgar/companysearch> (accessed 2026-10-01)
 - <https://www.ifrs.org/> (accessed 2026-10-01)
-- <https://www.investopedia.com/terms/r/returnonequity.asp> (accessed 2026-10-01) — secondary reference
-- <https://www.investopedia.com/terms/p/price-to-bookratio.asp> (accessed 2026-10-01) — secondary reference
-- <https://www.investopedia.com/terms/d/dividendyield.asp> (accessed 2026-10-01) — secondary reference
+- <https://www.investopedia.com/terms/r/returnonequity.asp> (accessed 2026-10-01; secondary reference)
+- <https://www.investopedia.com/terms/p/price-to-bookratio.asp> (accessed 2026-10-01; secondary reference)
+- <https://www.investopedia.com/terms/d/dividendyield.asp> (accessed 2026-10-01; secondary reference)

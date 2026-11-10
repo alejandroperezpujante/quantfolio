@@ -1,9 +1,9 @@
 # Arquitectura de Quantfolio
 
-Diagramas de la estructura de clases, las dependencias entre módulos y el flujo de datos del sistema. Los
-diagramas están escritos en **Mermaid** (UML equivalente, renderizable directamente en GitHub); pueden editarse en
-[FossFLOW](https://github.com/ai-8/fossflow), en [mermaid.live](https://mermaid.live) o en cualquier editor con
-soporte de diagramas Mermaid.
+Este documento reúne la estructura de clases, las dependencias entre módulos y el flujo de datos de Quantfolio. Los
+diagramas usan Mermaid, un formato UML equivalente que GitHub puede representar. También pueden editarse en
+[FossFLOW](https://github.com/ai-8/fossflow), en [mermaid.live](https://mermaid.live) o en cualquier editor compatible
+con Mermaid.
 
 ## Diagrama de clases (UML)
 
@@ -181,24 +181,28 @@ classDiagram
     FredMacroSource ..> MacroSeries : produce
 ```
 
-**Lectura del diagrama.** `PriceSource` es el contrato común de la capa de ingesta: los proveedores concretos
-(Yahoo Finance, Kraken, Alpha Vantage y ECB) lo implementan y `CachedPriceSource` lo decora sobre cualquier otro proveedor, de forma
-que la capa de análisis nunca depende de una API concreta. `PriceSeries` y `Portfolio` son las DataClasses del
-modelo; `MonteCarloParameters` concentra la parametrización del motor `simulation.py`, y `reporting.py` contiene
-los helpers de Markdown y gráficos que los métodos públicos delegan. `FredMacroSource`/`MacroSeries` cubren la
-tipología de datos adicional (macroeconomía y tipos de interés): las descargas pasan por el endpoint de archivo de
-ALFRED, cada `MacroSeries` registra en `vintage_date` el vintage del que proceden sus valores y `as_of` recupera los
-valores punto-en-el-tiempo publicados hasta una fecha; si el vintage servido no coincide con el solicitado, la
+`PriceSource` es el contrato común de la capa de ingesta. Yahoo Finance, Kraken, Alpha Vantage y ECB lo implementan, y
+`CachedPriceSource` lo envuelve para añadir caché a cualquier proveedor. La capa de análisis no depende de una API
+concreta.
+
+`PriceSeries` y `Portfolio` son las clases de datos del modelo. `MonteCarloParameters` contiene los parámetros del
+motor `simulation.py`, mientras que `reporting.py` reúne las funciones auxiliares de Markdown y gráficos que usan los
+métodos públicos.
+
+`FredMacroSource` y `MacroSeries` cubren los datos macroeconómicos y los tipos de interés. Las descargas pasan por el
+endpoint de archivo de ALFRED. Cada `MacroSeries` registra en `vintage_date` el vintage del que proceden sus valores,
+y `as_of` devuelve los valores publicados hasta una fecha. Si el vintage servido no coincide con el solicitado, la
 descarga falla con `ValueError` en lugar de etiquetar mal la serie.
 
-`AutoPortfolioConfig` permite declarar `quote_currencies` y `quote_units` para completar la procedencia
-monetaria, y `asset_families` para resolver tickers ambiguos. Los tipos pueden aportarse manualmente en
-`exchange_rates` o descargarse automáticamente cuando se omite esa colección. `max_age_days` limita la
-antigüedad de cada observación; `fx_max_age_days` fija el valor efectivo para una descarga y debe coincidir
-con la colección cuando ambos se proporcionan. `Portfolio.get_reporting_prices()` y
-`currency_conversion_diagnostics()` conservan la vista estricta sobre la unión de calendarios;
-`analysis_prices()` y `analysis_currency_conversion_diagnostics()` limitan la conversión y su traza a las fechas
-comunes usadas por las métricas y el informe.
+`AutoPortfolioConfig` permite declarar `quote_currencies` y `quote_units` para completar la procedencia monetaria, y
+`asset_families` para resolver tickers ambiguos. Los tipos pueden aportarse en `exchange_rates` o descargarse
+automáticamente cuando se omite esa colección. `max_age_days` limita la antigüedad de cada observación.
+`fx_max_age_days` fija el valor efectivo de una descarga y debe coincidir con la colección cuando ambos se
+proporcionan.
+
+`Portfolio.get_reporting_prices()` y `currency_conversion_diagnostics()` mantienen la vista estricta sobre la unión
+de calendarios. `analysis_prices()` y `analysis_currency_conversion_diagnostics()` limitan la conversión y su traza
+a las fechas comunes que usan las métricas y el informe.
 
 ## Flujo del sistema
 
@@ -249,16 +253,18 @@ flowchart LR
     MC --> RP
 ```
 
-**Flujo típico.** Los cuadernos crean los proveedores y descargan las series (en lotes con `get_many()`, con
-caché opcional). Cada proveedor normaliza su respuesta en `PriceSeries`, que limpia los datos y calcula sus
-estadísticos al construirse. Con varias series se instancia `Portfolio`, que valida y normaliza los pesos y alinea
-los calendarios. Si se declara una divisa de reporte, `currency.py` selecciona tipos históricos directos, inversos o
-cruzados por EUR y registra cada tramo utilizado. `Portfolio` aplica a los precios los factores seleccionados por
-`currency.py` antes del análisis. Sobre la cartera se calculan métricas, se genera el informe y los gráficos
-(`reporting.py`) y se lanza la simulación Monte Carlo
-(`simulation.py`), cuyos resultados también se visualizan. Los cuadernos
-`portfolio_*.ipynb` aíslan cada clase de activo; `quantfolio_demo.ipynb` recorre el toolkit completo y compara las
-cuatro clases en una cartera diversificada.
+En el flujo habitual, los cuadernos crean los proveedores y descargan las series, en lotes con `get_many()` y con
+caché opcional. Cada proveedor normaliza la respuesta en `PriceSeries`, que limpia los datos y calcula sus
+estadísticos al construirse. Con varias series se crea un `Portfolio`, que valida y normaliza los pesos y alinea los
+calendarios.
+
+Si se declara una divisa de reporte, `currency.py` selecciona tipos históricos directos, inversos o cruzados por EUR
+y registra cada tramo. `Portfolio` aplica esos factores a los precios antes del análisis. Después calcula las
+métricas, genera el informe y los gráficos con `reporting.py`, y lanza la simulación Monte Carlo de `simulation.py`;
+los resultados simulados también se visualizan.
+
+Los cuadernos `portfolio_*.ipynb` agrupan cada clase de activo. `quantfolio_demo.ipynb` recorre el toolkit completo y
+compara las cuatro clases en una cartera diversificada.
 
 ## Estructura de módulos
 

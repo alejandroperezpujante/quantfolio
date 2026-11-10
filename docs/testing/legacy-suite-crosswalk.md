@@ -1,14 +1,21 @@
 # Cruce de la suite heredada
 
-Este documento liquida la suite anterior antes de sustituirla. Inventaría **438 funciones de prueba** de nivel superior repartidas en **17 módulos**; la parametrización de esas funciones producía **614 casos recogidos**. La suite conductual nueva contiene **204 funciones** y **307 casos** en `unit/`, `contracts/`, `integration/` y `e2e/`.
+Este documento registra cómo se sustituyó la suite anterior. Inventaría **438 funciones de prueba** de nivel
+superior repartidas en **17 módulos**; sus parametrizaciones producían **614 casos recogidos**. La suite nueva,
+organizada por comportamiento, contiene **204 funciones** y **307 casos** en `unit/`, `contracts/`, `integration/` y
+`e2e/`.
 
 ## Cómo leer el cruce
 
-- **Comportamiento**: garantía observable que protegía la prueba heredada; se resume a partir de su nombre y cuerpo.
+- **Comportamiento**: garantía observable que protegía la prueba heredada, resumida a partir de su nombre y cuerpo.
 - **Clase de defecto**: riesgo que la prueba impedía que llegara a producción.
-- **Disposición**: `moved` (una garantía a un propietario), `merged` (varias garantías consolidadas), `contract` (promoción al contrato común de proveedores), `e2e` (flujo público completo) o `deleted` (sin prueba de reemplazo directa, con justificación).
-- **Nuevo propietario**: ruta relativa a `tests/` y función que contiene la garantía. `—` significa que no hay propietario directo.
-- Una función heredada parametrizada puede haber producido varios casos; el cruce cuenta funciones, no casos. La cobertura final se verifica con la suite nueva al 100 % de líneas y ramas.
+- **Disposición**: `moved` asigna la garantía a un propietario; `merged` consolida varias garantías; `contract` la
+  lleva al contrato común de proveedores; `e2e` cubre un flujo público completo; y `deleted` indica que no hay una
+  prueba de reemplazo directa, con su justificación.
+- **Nuevo propietario**: ruta relativa a `tests/` y función que contiene la garantía. `—` significa que no hay
+  propietario directo.
+- Una función heredada parametrizada puede haber producido varios casos. El cruce cuenta funciones, no casos. La
+  cobertura final se verifica con la suite nueva al 100 % de líneas y ramas.
 
 ## Resumen
 
@@ -27,9 +34,14 @@ Este documento liquida la suite anterior antes de sustituirla. Inventaría **438
 | Atribuciones a `integration/` | 339 |
 | Atribuciones a `e2e/` | 6 |
 
-La suite nueva recoge **307 casos**: `unit` 30, `contracts` 48, `integration` 215 y `e2e` 14. Esos casos se expanden desde 204 funciones de prueba; la diferencia corresponde a parametrizaciones.
+La suite nueva recoge **307 casos**: 30 en `unit`, 48 en `contracts`, 215 en `integration` y 14 en `e2e`. Proceden de
+204 funciones de prueba; la diferencia corresponde a parametrizaciones.
 
-Los tres casos de recuento de llamadas de `test_reporting.py` se retiraron: el contenido del informe y sus métricas suministradas son ahora la prueba de corrección. Las pruebas de `_first_column` y `_CheckedPriceSource` también desaparecen; sus garantías se ejercen en el parseo multiíndice de Yahoo y en la composición pública de AutoPortfolio. Las comprobaciones de cadenas y AST de cuadernos se sustituyen por seis ejecuciones offline más una única prueba de política de formato.
+Los tres casos de recuento de llamadas de `test_reporting.py` se retiraron. Ahora, el contenido del informe y las
+métricas suministradas comprueban la corrección. Las pruebas de `_first_column` y `_CheckedPriceSource` también se
+eliminaron; sus garantías se ejercen en el parseo multiíndice de Yahoo y en la composición pública de AutoPortfolio.
+Las comprobaciones de cadenas y AST de los cuadernos quedan cubiertas por seis ejecuciones offline y una única prueba
+de política de formato.
 
 ## Inventario por módulo heredado
 

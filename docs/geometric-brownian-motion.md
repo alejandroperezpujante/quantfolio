@@ -1,22 +1,22 @@
-# Geometric Brownian Motion
+# Geometric Brownian motion
 
-**Geometric Brownian motion (GBM)**, also called exponential Brownian motion, is a continuous-time stochastic process in
-which the logarithm of a randomly varying quantity (such as a stock price) follows a Brownian motion with drift. It is
-the standard process used to model stock prices in the Black–Scholes framework. GBM is defined by the stochastic
-differential equation $dS_t = \mu S_t \, dt + \sigma S_t \, dW_t$, where $W_t$ is a Wiener process (Brownian
-motion), $\mu$ is the percentage drift, and $\sigma$ is the percentage volatility; both $\mu$ and $\sigma$ are constants
-in the model. The parameters have distinct roles: $\mu$ models the deterministic trend, while $\sigma$ models the
-unpredictable fluctuations. Because the log of the price is normally distributed, the price $S_t$ is log-normally
-distributed and remains strictly positive. The model is analytically tractable but relies on simplifying assumptions
-that are known to differ from observed markets.
+**Geometric Brownian motion (GBM)**, or exponential Brownian motion, is a continuous-time stochastic process. The
+logarithm of the varying quantity, such as a stock price, follows a Brownian motion with drift. GBM is the standard
+price process in the Black-Scholes framework.
+
+The process follows the stochastic differential equation $dS_t = \mu S_t \, dt + \sigma S_t \, dW_t$. Here $W_t$ is a
+Wiener process, $\mu$ is the percentage drift and $\sigma$ is the percentage volatility. Both parameters are constant.
+The drift sets the deterministic trend, while volatility produces the unpredictable fluctuations.
+
+The log of the price is normally distributed, so the price $S_t$ is log-normal and remains strictly positive. The
+model has closed-form results, but its simplifying assumptions differ from observed markets.
 
 ## Why it matters for the B1-T1 toolkit
 
-GBM is the canonical price-process model that links a drift and a volatility assumption to a distribution of future
-prices. It is the reference model against which simulated price paths and their sensitivity to drift and volatility
-assumptions are described.
+GBM connects a drift and a volatility assumption to a distribution of future prices. The toolkit uses it to generate
+simulated price paths and to show how those paths respond when the drift or volatility changes.
 
-## Key facts and formulas
+## Facts and formulas
 
 - Stochastic differential equation:
 
