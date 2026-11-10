@@ -99,22 +99,63 @@ jobs:
                   errors += int(suite.get("errors", 0))
                   skipped += int(suite.get("skipped", 0))
                   seconds += float(suite.get("time", 0.0))
+              def test_location(classname: str) -> tuple[str, str]:
+                  """Map pytest's dotted classname to a layer and a layer/file.py locator."""
+                  parts = [part for part in classname.split(".") if part]
+                  if "tests" in parts:
+                      parts = parts[parts.index("tests") + 1 :]
+                  module_parts = []
+                  for part in parts:
+                      if part[:1].isupper():
+                          break
+                      module_parts.append(part)
+                      if part.startswith("test_"):
+                          break
+                  if not module_parts:
+                      return "other", "other"
+                  layer = module_parts[0]
+                  if layer not in {"unit", "contracts", "integration", "e2e"}:
+                      layer = "other"
+                  return layer, "/".join(module_parts) + ".py"
+
               per_file: dict = {}
+              per_layer: dict = {}
               for case in testsuites.iter("testcase"):
-                  parts = case.get("classname", "?").split(".")
-                  module = parts[1] if len(parts) > 1 else parts[0]
-                  entry = per_file.setdefault(
-                      module, {"tests": 0, "failures": 0, "errors": 0, "skipped": 0, "seconds": 0.0}
-                  )
-                  entry["tests"] = int(entry["tests"]) + 1
-                  entry["seconds"] = round(float(entry["seconds"]) + float(case.get("time", 0)), 3)
-                  for tag, key in (("failure", "failures"), ("error", "errors"), ("skipped", "skipped")):
-                      if case.find(tag) is not None:
-                          entry[key] = int(entry[key]) + 1
+                  layer, module = test_location(case.get("classname", "?"))
+                  for entries, key in ((per_file, module), (per_layer, layer)):
+                      entry = entries.setdefault(
+                          key,
+                          {
+                              "tests": 0,
+                              "failures": 0,
+                              "errors": 0,
+                              "skipped": 0,
+                              "seconds": 0.0,
+                          },
+                      )
+                      entry["tests"] = int(entry["tests"]) + 1
+                      entry["seconds"] = round(
+                          float(entry["seconds"]) + float(case.get("time", 0)), 3
+                      )
+                      for tag, field in (
+                          ("failure", "failures"),
+                          ("error", "errors"),
+                          ("skipped", "skipped"),
+                      ):
+                          if case.find(tag) is not None:
+                              entry[field] = int(entry[field]) + 1
               junit_files = [
                   {"file": module, **entry}
                   for module, entry in sorted(
                       per_file.items(), key=lambda pair: (-int(pair[1]["tests"]), pair[0])
+                  )
+              ]
+              layer_order = {"unit": 0, "contracts": 1, "integration": 2, "e2e": 3, "other": 4}
+              junit_layers = [
+                  {"layer": layer, **entry}
+                  for layer, entry in sorted(
+                      per_layer.items(),
+                      key=lambda pair: (layer_order.get(pair[0], 99), pair[0]),
                   )
               ]
               report.update(
@@ -124,6 +165,7 @@ jobs:
                   junit_skipped=skipped,
                   junit_seconds=round(seconds, 2),
                   junit_files=junit_files,
+                  junit_layers=junit_layers,
               )
           except (ET.ParseError, KeyError, ValueError):
               report["junit_error"] = "junit.xml no disponible"
@@ -143,7 +185,7 @@ jobs:
               "| `ruff check` | all rules with the documented exceptions |",
               "| `ruff format --check` | canonical formatting |",
               "| `mypy src tests` | strict typing |",
-              "| `pytest` | network-free tests, coverage ≥ 80 % |",
+              "| `pytest` | network-free tests, coverage = 100 % |",
           ]
           if "coverage_line_rate" in report:
               lines += [
@@ -158,6 +200,16 @@ jobs:
                       f"**Tests**: {report['junit_tests']} in {report['junit_seconds']} s "
                       f"(failures {report['junit_failures']}, errors {report['junit_errors']}, "
                       f"skipped {report['junit_skipped']})",
+                      "",
+                      "| Test layer | Tests | Failures | Errors | Time (s) |",
+                      "|---|---:|---:|---:|---:|",
+                  ]
+                  for entry in report["junit_layers"]:
+                      lines.append(
+                          f"| `{entry['layer']}` | {entry['tests']} | {entry['failures']} "
+                          f"| {entry['errors']} | {entry['seconds']} |"
+                      )
+                  lines += [
                       "",
                       "| Test file | Tests | Failures | Errors | Time (s) |",
                       "|---|---:|---:|---:|---:|",
@@ -274,6 +326,11 @@ jobs:
                       f"(fallos {tests['junit_failures']}, errores {tests['junit_errors']}, "
                       f"omitidas {tests['junit_skipped']})."
                   )
+              if tests.get("junit_layers"):
+                  layers = ", ".join(
+                      f"`{entry['layer']}` {entry['tests']}" for entry in tests["junit_layers"]
+                  )
+                  lines.append(f"- Pruebas por capa: {layers}.")
           if sonar.get("dashboard_url"):
               lines += [
                   "",

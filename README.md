@@ -28,7 +28,7 @@ Ortega.
   distribuciones.
 - **Informes** Markdown parametrizables (`.report()`) y panel analítico de gráficos (`.plots_report()`).
 - **Calidad de código**: tipado estricto (`mypy --strict`), `ruff` con `select = ["ALL"]` y las excepciones
-  documentadas en `pyproject.toml`, pruebas sin red y cobertura de ramas ≥ 80 % (actual: 100 %), hooks de
+  documentadas en `pyproject.toml`, pruebas sin red y cobertura de líneas y ramas del 100 %, hooks de
   pre-commit e integración continua en GitHub.
 
 ## Requisitos
@@ -203,7 +203,7 @@ el margen inicial de la descarga y la vigencia de la caché FX.
 │   ├── portfolio_fixed_income.ipynb
 │   ├── portfolio_crypto.ipynb
 │   └── portfolio_multi_currency.ipynb
-├── tests/                   # suite sin red, con dobles de proveedor
+├── tests/                   # suite sin red por capas: unit, contracts, integration y e2e
 ├── docs/                    # investigación de fondo y arquitectura
 ├── pyproject.toml           # dependencias y configuración de ruff, mypy y pytest
 └── uv.lock                  # versiones fijadas de todas las dependencias
@@ -415,13 +415,17 @@ El diagrama UML de clases y el flujo del sistema están en [`docs/architecture.m
 uv run ruff check .        # linter (todas las reglas, con las excepciones de pyproject.toml)
 uv run ruff format --check .  # formato
 uv run mypy src tests      # tipado estricto
-uv run pytest              # pruebas + cobertura (falla por debajo del 80 %)
+uv run pytest              # pruebas + cobertura (falla por debajo del 100 %)
 uv run pre-commit run --all-files  # quinta puerta, local (incluye hooks de higiene)
 ```
 
-La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y cubre validaciones,
-limpieza, alineación, caché, simulaciones y generación de informes. GitHub Actions repite cuatro de los cinco
-controles (todos salvo `pre-commit`, que es una puerta local) en cada *pull request* y en cada `push` a `main`
+La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y se organiza por capas:
+`unit` para fórmulas y modelos, `contracts` para la interfaz común de proveedores, `integration` para adaptadores y
+composición, y `e2e` para flujos públicos y la ejecución real de los seis cuadernos. El criterio de propiedad,
+los comandos por capa y las reglas de diseño están en [`tests/README.md`](tests/README.md); el destino de cada prueba
+heredada está en [`docs/testing/legacy-suite-crosswalk.md`](docs/testing/legacy-suite-crosswalk.md). GitHub Actions
+repite cuatro de los cinco controles (todos salvo `pre-commit`, que es una puerta local) en cada *pull request* y en
+cada `push` a `main`
 (flujo [`ci.yml`](.github/workflows/ci.yml)) y publica la evidencia de cada ejecución: un resumen en la página
 del *run* y el artefacto `test-report` con `coverage.xml`, `junit.xml` y `test-summary.json`. En los *pull
 requests* se añade un comentario con la evidencia consolidada de las pruebas y del análisis de calidad. La rama
@@ -479,13 +483,13 @@ pasen el análisis. Cuando el *quality gate* no está en verde, el paso del esc�
 
 ### Evidencia de cada ejecución
 
-- **Resumen del *run***: el trabajo de pruebas publica commit, cobertura y desglose de la suite; el análisis
+- **Resumen del *run***: el trabajo de pruebas publica commit, cobertura y desglose por capa y fichero; el análisis
   publica el estado del *quality gate* con todas sus condiciones, las incidencias abiertas por regla y fichero,
   la cobertura, la duplicación y la tarea de proceso (identificador del análisis y enlace al *dashboard*).
 - **Artefactos descargables**: `test-report` (`coverage.xml`, `junit.xml`, `test-summary.json`) y `sonar-report`
   (`report-task.txt` y `gate-summary.json`), enlazados desde la página del *run*.
 - **Comentario en el *pull request***: un comentario se actualiza con la evidencia consolidada (commit, estado de
-  ambas comprobaciones, cobertura, recuento de pruebas, estado del *quality gate* y enlace al *dashboard*) cada
+  ambas comprobaciones, cobertura, recuento por capa, estado del *quality gate* y enlace al *dashboard*) cada
   vez que se publica una revisión nueva.
 - **Análisis indexado en SonarQube**: el informe JUnit queda registrado en el servidor (`sonar.python.xunit.reportPath`),
   junto a la cobertura y a la revisión exacta analizada.
