@@ -134,6 +134,15 @@ def test_yahoo_accepts_a_single_close_selection_returned_as_a_series(
         lambda *_args, **_kwargs: cast("pd.DataFrame", Frame()),
     )
 
+    class Ticker:
+        def __init__(self, _symbol: str) -> None:
+            pass
+
+        def get_history_metadata(self) -> dict[str, str]:
+            return {}
+
+    monkeypatch.setattr("quantfolio.sources.yahoo.yf.Ticker", Ticker)
+
     asset = YahooFinanceSource().get_prices("AAPL", TRADING_DATES[0])
 
     pd.testing.assert_series_equal(asset.prices, selected, check_freq=False)
