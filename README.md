@@ -481,6 +481,15 @@ Los tres secretos deben existir además como secretos de Dependabot, para que su
 pasen el análisis. Cuando el *quality gate* no está en verde, el paso del escáner falla (por
 `sonar.qualitygate.wait=true`) y el flujo queda en rojo.
 
+### Revisión automática con Codex
+
+La aplicación de GitHub `chatgpt-codex-connector` revisa los *pull requests* y publica un comentario con
+los hallazgos, si los hay. Codex revisa al abrir el *pull request*, al marcar un borrador como listo y al
+comentar `@codex review`; el comentario indica el commit inspeccionado y si quedan hallazgos pendientes.
+Es una ayuda consultiva: no es una comprobación obligatoria y no bloquea la fusión, así que los hallazgos
+se corrigen en la misma rama o se descartan con una justificación. La configuración de la revisión está en
+la aplicación de Codex para GitHub, fuera del repositorio.
+
 ### Evidencia de cada ejecución
 
 - **Resumen del *run***: el trabajo de pruebas publica commit, cobertura y desglose por capa y fichero; el análisis
@@ -491,6 +500,8 @@ pasen el análisis. Cuando el *quality gate* no está en verde, el paso del esc�
 - **Comentario en el *pull request***: un comentario se actualiza con la evidencia consolidada (commit, estado de
   ambas comprobaciones, cobertura, recuento por capa, estado del *quality gate* y enlace al *dashboard*) cada
   vez que se publica una revisión nueva.
+- **Revisión de Codex**: `chatgpt-codex-connector` publica un comentario aparte con el commit inspeccionado
+  y los hallazgos pendientes del *pull request*.
 - **Análisis indexado en SonarQube**: el informe JUnit queda registrado en el servidor (`sonar.python.xunit.reportPath`),
   junto a la cobertura y a la revisión exacta analizada.
 
