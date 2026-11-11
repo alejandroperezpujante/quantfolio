@@ -15,10 +15,10 @@ Following or Preceding moves it to another date. Timestamps are usually stored i
 IANA time-zone database supplies the rules for time zones and daylight saving. Open-source libraries such as
 `exchange_calendars` encode each exchange's sessions, holidays and half-days.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit combines series from several venues on one time axis. Exchange calendars explain why dates are missing and
-why timestamps differ. They also show why a simple merge on date is not enough when the source series are unaligned.
+Align series on the dates they share before calculating portfolio returns. Treat a missing date as a calendar
+difference, not as missing data, and inspect the date gaps when the annualization assumes a fixed number of periods.
 
 ## Facts and formulas
 

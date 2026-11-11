@@ -84,11 +84,10 @@ def render_portfolio_report(
 ) -> str:
     """Render a portfolio report as structured Markdown.
 
-    The report degrades gracefully: when the aligned sample is too short to estimate the
-    metrics, or their computation overflows, the metrics section is replaced by an
-    explanatory note and the risk warnings skip the volatility and drawdown checks. A
-    one-return sample is reported this way; assets with disjoint calendars still raise from
-    ``portfolio_returns()``.
+    When the aligned sample is too short to estimate the metrics, or their computation
+    overflows, the metrics section is replaced by an explanatory note and the risk warnings
+    skip the volatility and drawdown checks. A one-return sample is reported this way;
+    assets with disjoint calendars still raise from ``portfolio_returns()``.
 
     Args:
         portfolio: Portfolio to report on.

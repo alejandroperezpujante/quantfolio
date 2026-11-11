@@ -15,11 +15,10 @@ rate. Sovereign bond **yields** are set by the market. The **yield curve** relat
 is also called the term structure. The **unemployment rate** is the share of the labour force that is jobless and
 actively seeking work.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-These series are a common "extra data type" alongside equity and index prices. Analysts often read equity returns in
-the context of inflation, policy rates and growth. Releases follow a calendar and lag their reference period, so their
-timing matters.
+Read each release against its reference period and publication lag. Request ALFRED vintages with `as_of` to keep
+revisions and look-ahead bias out of historical analysis.
 
 ## Facts and formulas
 
@@ -58,5 +57,3 @@ serves a different vintage from the one requested, for example when ALFRED clamp
   (accessed 2026-10-01)
 - <https://www.ecb.europa.eu/press/calendars/statscal/html/index.en.html> (accessed 2026-10-01)
 - <https://fred.stlouisfed.org/> (accessed 2026-10-01)
-- The IMF World Economic Outlook and OECD indicator pages returned HTTP 403 at the time of writing, so they are not
-  cited.

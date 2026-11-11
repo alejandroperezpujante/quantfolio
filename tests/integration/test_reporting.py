@@ -236,7 +236,7 @@ def test_report_explains_unrepresentable_metrics(monkeypatch: pytest.MonkeyPatch
 
 
 def test_currency_free_portfolios_expose_empty_diagnostic_frames() -> None:
-    """Legacy portfolios return stable empty traces in both diagnostics views."""
+    """A currency-free portfolio returns stable empty traces in both diagnostics views."""
     portfolio = _stable_portfolio()
 
     union = portfolio.currency_conversion_diagnostics()
@@ -309,6 +309,6 @@ def test_simulation_plot_rejects_unrepresentable_inputs(
     max_paths: int,
     message: str,
 ) -> None:
-    """Empty matrices and non-positive path selections fail with actionable errors."""
+    """Empty matrices and non-positive path selections raise ``ValueError``."""
     with pytest.raises(ValueError, match=message):
         plot_simulation_paths(simulations, max_paths=max_paths)

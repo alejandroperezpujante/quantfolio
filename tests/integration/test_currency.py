@@ -345,7 +345,7 @@ def test_missing_rate_on_a_shared_asset_date_fails_before_later_dates() -> None:
 
 
 def test_portfolio_requires_a_reporting_target_for_conversion() -> None:
-    """Legacy portfolios and supplied-rate portfolios cannot silently convert."""
+    """Portfolios without a reporting currency or supplied rates cannot convert silently."""
     asset = PriceSeries(
         "UNKNOWN",
         pd.Series([10.0, 11.0], index=pd.DatetimeIndex(["2025-01-02", "2025-01-03"])),
@@ -385,7 +385,7 @@ def test_portfolio_validates_rate_collection_and_asset_currency_metadata() -> No
 
 
 def test_mutated_asset_without_currency_is_rejected_by_the_converted_view() -> None:
-    """A previously valid asset cannot lose its currency and enter conversion."""
+    """A valid asset that loses its currency cannot enter conversion."""
     asset = PriceSeries(
         "EU",
         pd.Series([10.0, 11.0], index=pd.DatetimeIndex(["2025-01-02", "2025-01-03"])),

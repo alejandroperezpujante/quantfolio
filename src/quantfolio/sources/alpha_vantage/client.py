@@ -143,7 +143,7 @@ class AlphaVantageClient:
                 payload: object = json.load(response)
         except OSError as exc:
             # The original error may embed the credential-bearing URL in its message,
-            # so it is deliberately not chained to the user-facing error.
+            # so it is not chained to the user-facing error.
             msg = f"No se pudo contactar con Alpha Vantage ({type(exc).__name__})."
             raise AlphaVantageError(msg) from None
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:

@@ -165,8 +165,7 @@ quieres tratarlos como cripto, declara `asset_families` y, si se usa Alpha Vanta
 `provider_symbols` como `CRYPTO:ETH/USD`: la biblioteca no adivina cómo dividirlos. En cripto, una cotización
 solo se etiqueta como divisa si figura en la tabla fiat del BCE; `ETH/BTC`, `BTC/USDT` y cotizaciones
 desconocidas quedan sin divisa. Sin conversión ni overrides, esos mercados siguen siendo válidos como
-cartera heredada; para analizarlos en fiat se necesita una serie cuya cotización ya esté expresada en una
-divisa admitida.
+cartera local; para analizarlos en fiat, usa una serie cuya cotización ya esté expresada en una divisa admitida.
 También permite configurar `cache_enabled`, `cache_dir`, `cache_ttl_days`, `cache_refresh`, `fx_source`,
 `exchange_rates`, `fx_lookback_days` y `fx_max_age_days`. Las prioridades por ticker tienen precedencia
 sobre las de familia. Usa `reporting_currency` para convertir precios. `end` es exclusivo.
@@ -223,7 +222,9 @@ DataClass que representa una serie temporal de precios con sus metadatos (`ticke
 - puede registrar `quote_currency` y `quote_unit`. Los códigos se validan por su forma de tres letras, sin
   comprobar el registro ISO completo; en `quote_unit`, las grafías inequívocas GBX/GBp, ILA y ZAc se interpretan
   como GBP, ILS y ZAR multiplicando los precios por 0,01, y se conserva la unidad original para su trazabilidad.
-  Yahoo obtiene la unidad desde sus metadatos; Kraken y Alpha Vantage reconocen la divisa de pares explícitos. Si no se conoce, proporciona la divisa manualmente. La caché antigua puede requerir `refresh=True`.
+  Yahoo obtiene la unidad desde sus metadatos; Kraken y Alpha Vantage reconocen la divisa de pares explícitos.
+  Si no se conoce, proporciona la divisa manualmente. Para un CSV sin metadatos de cotización, refresca la caché
+  con `refresh=True`.
 
 El método `summary(periods_per_year=252)` devuelve `mean_daily_return`, `daily_volatility`,
 `annualized_return_approx`, `annualized_volatility`, `max_drawdown` y `sharpe_ratio`.
@@ -243,8 +244,8 @@ Una **cartera de inversión** es una colección de activos junto con la fracció
   `analysis_prices()` limita la conversión a las fechas comunes que alimentan las métricas y los análisis.
   `currency_conversion_diagnostics()` conserva la traza de la unión completa y
   `analysis_currency_conversion_diagnostics()` usa la misma ventana común que el informe. La conversión requiere
-  divisa conocida en todos los activos; las carteras antiguas sin divisas siguen disponibles, y sus informes
-  indican que no se evaluó la conversión.
+  divisa conocida en todos los activos. Sin divisas declaradas, la cartera conserva la vista local y el informe
+  indica que no se evaluó la conversión.
 
 `ExchangeRates` admite series `PriceSeries` manuales o `ExchangeRates.from_source(...)`. Los tickers usan el orden
 `FX:AAA/BBB`: cada valor expresa unidades de `BBB` por una unidad de `AAA`. La resolución usa primero el par directo,
@@ -274,7 +275,7 @@ descargar varias series a partir de una lista de activos (en lote, secuencial).
 `ECBExchangeRateSource` implementa `PriceSource` para los pares EUR-first `FX:EUR/DIVISA`; devuelve unidades de la
 divisa cotizada por EUR a partir del [API diario del ECB](https://data.ecb.europa.eu/help/api/data-examples).
 Son tipos de referencia informativos, no precios de ejecución de bróker. La caché CSV conserva la divisa y la unidad
-de cotización; los archivos antiguos se leen con esos metadatos desconocidos y no se completan por inferencia.
+de cotización; un CSV sin esos metadatos se lee con divisa y unidad desconocidas, sin completarlas por inferencia.
 
 Las descargas macro (`FredMacroSource`) usan el endpoint de **ALFRED**, el archivo de vintages de FRED: sin vintage
 solicitado sirve los mismos valores que FRED, y cada `MacroSeries` registra en su campo `vintage_date` el vintage del
@@ -287,16 +288,15 @@ para no etiquetar los valores con una fecha a la que no pertenecen.
 `CachedPriceSource` envuelve a otro proveedor y guarda cada serie en `data/<namespace>/<ticker-saneado>.csv`
 (por ejemplo, `BTC/USD` → `BTC-USD.csv`). El subdirectorio procede de `PriceSource.cache_namespace`, que por
 defecto coincide con el nombre visible; Alpha Vantage lo especializa para separar la semántica de precio
-(`alpha-vantage-free-v2`, `alpha-vantage-premium-v2`). Los directorios antiguos `alpha-vantage/` no identifican
-esa semántica: se dejan intactos y se vuelven a descargar los datos. El archivo se reutiliza mientras empiece antes
-de la fecha solicitada y su último dato siga vigente (margen configurable con `ttl_days`), y se reemplaza en caso
-contrario o con `refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de forma que dos tickers
-que sanean al mismo nombre de archivo nunca comparten precios; si la columna no coincide con el ticker pedido, la
-entrada se trata como un fallo de caché. Los CSV escritos por versiones anteriores, sin la columna `ticker`, se
-aceptan solo cuando el ticker no necesita saneado (el nombre del fichero coincide exactamente con el ticker); en
-caso contrario la entrada cuenta como fallo de caché y se regenera. Si `AutoPortfolio` va a interpretar
-monetariamente una entrada antigua sin divisa ni unidad conocidas, fuerza su refresco y no reutiliza el CSV
-heredado si falla; cuando el refresco tampoco establece la unidad, hay que declararla en `quote_units`.
+(`alpha-vantage-free-v2`, `alpha-vantage-premium-v2`). Un directorio `alpha-vantage/` sin sufijo de plan no
+identifica esa semántica: déjalo intacto y vuelve a descargar los datos. Reutiliza el archivo mientras empiece
+antes de la fecha solicitada y su último dato siga vigente (margen configurable con `ttl_days`); reemplázalo en
+caso contrario o con `refresh=True`. El CSV guarda el ticker solicitado en una columna `ticker`, de modo que dos
+tickers que sanean al mismo nombre de archivo nunca comparten precios. Si la columna no coincide con el ticker
+pedido, trata la entrada como un fallo de caché. Acepta un CSV sin columna `ticker` solo cuando el nombre del
+fichero coincide exactamente con el ticker; en caso contrario, cuéntalo como fallo de caché y vuelve a generarlo.
+Si `AutoPortfolio` va a interpretar monetariamente una entrada sin divisa ni unidad conocidas, fuerza su refresco y
+no reutiliza el CSV si falla; si el refresco tampoco establece la unidad, declárala en `quote_units`.
 
 ### Alpha Vantage opcional
 
@@ -332,22 +332,22 @@ rentabilidades y las comparaciones entre proveedores.
 - `alignment_summary()` cuantifica el efecto: fechas de la unión, fechas comunes y ratio de cobertura; el informe
   incorpora estos diagnósticos y avisa cuando la alineación descarta más del 10 % de las fechas.
 
-## Validación de entradas (análisis y justificación)
+## Validación de entradas
 
-El toolkit **restringe** los inputs por tres razones:
+Restringe los inputs por tres razones:
 
 1. **Corrección analítica**: métricas como la rentabilidad logarítmica o la volatilidad dejan de ser válidas con
    precios negativos o nulos, y las covarianzas de cartera son falsas si los calendarios no están alineados.
    Aceptar esos datos produce resultados incorrectos que nadie detecta.
-2. **Detección temprana de errores**: validar en el constructor (ticker vacío, `pandas.Series` incorrecta, índice
-   que no es `DatetimeIndex`, claves y pesos incoherentes, parámetros fuera de rango) convierte errores de datos en
-   excepciones inmediatas con mensajes claros en español; sin esa validación, el fallo aparece más tarde y es
-   difícil de rastrear.
+2. **Detección temprana de errores**: valida en el constructor (ticker vacío, `pandas.Series` incorrecta, índice
+   que no es `DatetimeIndex`, claves y pesos incoherentes, parámetros fuera de rango). Así, un error de datos se
+   convierte en una excepción inmediata con un mensaje claro en español; sin esa validación, el fallo aparece más
+   tarde y es difícil de rastrear.
 3. **Homogeneidad**: las restricciones definen el contrato interno (`PriceSeries`) que todos los proveedores
    cumplen, y son la base de la interoperabilidad entre APIs que pide el enunciado.
 
-El coste asumido es que no se admiten series atípicas (p. ej. valores negativos, propios de precios de energía en
-algunos mercados); la limitación es consciente y está documentada.
+No se admiten series atípicas (p. ej. valores negativos, propios de precios de energía en algunos mercados): la
+limpieza descarta esos valores y conserva solo precios positivos.
 
 Los validadores compartidos viven en `quantfolio.validation`: la cartera, la serie de precios, el motor de
 simulación y las medidas de riesgo los importan desde un único módulo, de modo que la misma entrada inválida
@@ -422,8 +422,7 @@ uv run pre-commit run --all-files  # quinta puerta, local (incluye hooks de higi
 La suite vive en `tests/`, no toca la red (los proveedores se sustituyen por dobles) y se organiza por capas:
 `unit` para fórmulas y modelos, `contracts` para la interfaz común de proveedores, `integration` para adaptadores y
 composición, y `e2e` para flujos públicos y la ejecución real de los seis cuadernos. El criterio de propiedad,
-los comandos por capa y las reglas de diseño están en [`tests/README.md`](tests/README.md); el destino de cada prueba
-heredada está en [`docs/testing/legacy-suite-crosswalk.md`](docs/testing/legacy-suite-crosswalk.md). GitHub Actions
+los comandos por capa y las reglas de diseño están en [`tests/README.md`](tests/README.md). GitHub Actions
 repite cuatro de los cinco controles (todos salvo `pre-commit`, que es una puerta local) en cada *pull request* y en
 cada `push` a `main`
 (flujo [`ci.yml`](.github/workflows/ci.yml)) y publica la evidencia de cada ejecución: un resumen en la página
@@ -440,8 +439,8 @@ El proyecto se analiza contra la instancia SonarQube del equipo con la configura
 perfiles de calidad `Python Strict` e `IPython Strict` (442 y 443 reglas activas respectivamente: todas las del
 analizador) y el *quality gate* `Quantfolio Strict`, que exige cero incidencias, 100 % de cobertura de líneas y
 ramas, 0 % de duplicación y calificaciones A/A/A, tanto en el código total como en el código nuevo. La única
-excepción documentada es `python:S1722` («New-style classes should be used»), una regla heredada de Python 2 que
-no aplica a Python 3 y que está desactivada en el perfil. La regla `ipython:S113` («Files should end with a
+excepción documentada es `python:S1722` («New-style classes should be used»), una regla de Python 2 que no aplica
+a Python 3 y que está desactivada en el perfil. La regla `ipython:S113` («Files should end with a
 newline») está además excluida para los cuadernos: `ruff format`, obligatorio en los hooks de pre-commit,
 normaliza el código de cada celda sin salto de línea final, por lo que la regla no puede satisfacerse en un
 cuaderno formateado; la exclusión está declarada en `sonar-project.properties`.
@@ -525,8 +524,8 @@ la aplicación de Codex para GitHub, fuera del repositorio.
   Una cartera de un solo calendario también puede superar el 5 % porque los fines de semana cuentan
   como días naturales, así que la advertencia describe ese porcentaje medido y no afirma que la
   cartera mezcle calendarios.
-- Los proveedores externos pueden cambiar sus límites o interfaces (p. ej. Stooq pasó a exigir JavaScript durante
-  el desarrollo del taller, por lo que se sustituyó por Kraken, que es una API pública sin clave).
+- Los proveedores externos pueden cambiar sus límites o interfaces. Stooq exige JavaScript y no sirve como fuente
+  programática; por eso la ingesta usa Kraken, una API pública sin clave.
 
 ## Correspondencia con el enunciado
 
@@ -536,14 +535,13 @@ la aplicación de Codex para GitHub, fuera del repositorio.
 | Ingesta multifuente y salida estandarizada | `sources/` (Yahoo, Kraken, Alpha Vantage opcional, ECB, caché) devolviendo `PriceSeries`; `get_many()` en lote; FRED (`macro.py`, vintages ALFRED) como tipología adicional. |
 | Modelado: series y cartera | `PriceSeries` (DataClass, estadísticos automáticos y metadatos de cotización), `ExchangeRates` y `Portfolio` (agregación y análisis opcional en divisa de reporte). |
 | Motor Monte Carlo | `Portfolio.simulate_monte_carlo()` y `PriceSeries.simulate_monte_carlo()` con `MonteCarloParameters`; `plot_simulation()`. |
-| Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; sección de validación de entradas en este README. |
+| Limpieza, preprocesado y reportes | Limpieza en `PriceSeries`; alineación explícita con diagnósticos; `.report()` y `.plots_report()`; validadores en `quantfolio.validation`. |
 | Estructura y diagramado | `src/` solo biblioteca, `notebooks/` como entrada reproducible y `docs/architecture.md` con los diagramas. |
 
 ## Documentación de fondo
 
-El directorio [`docs/`](docs/README.md) recopila el material de investigación que sustenta el diseño (índices,
-volatilidad, GBM, Monte Carlo, matrices de covarianza, indicadores macro, proveedores de datos, etc.), con sus
-fuentes.
+[`docs/`](docs/README.md) contiene material de referencia sobre índices, volatilidad, GBM, Monte Carlo, matrices de
+covarianza, indicadores macro y proveedores de datos, con sus fuentes.
 
 ## Licencia
 

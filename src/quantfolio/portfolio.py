@@ -394,7 +394,7 @@ class Portfolio:
         common_dates = len(common)
         coverage = common_dates / union_dates if union_dates else 0.0
         # The first shared date is the base of the first return, so the return intervals start
-        # on the second one; this mirrors ``return_gaps()`` without requiring two returns.
+        # on the second one.
         gaps = _calendar_gaps(pd.DatetimeIndex(common.index[1:]))
         multi_day_returns = int((gaps > 1).sum())
         multi_day_share = float(multi_day_returns / len(gaps)) if len(gaps) else 0.0

@@ -70,7 +70,7 @@ class ExchangeRates:
     ``resolve_rate`` prefers a direct pair, then its inverse, and finally a two-leg EUR
     cross. Each selected observation must be on or before the requested date and no more
     than ``max_age_days`` calendar days old. Collections compare by identity because their
-    public rate series contain mutable pandas objects, and they are deliberately unhashable.
+    public rate series contain mutable pandas objects, so the collection is unhashable.
 
     Args:
         rates: Mapping or iterable of rate series returned by a ``PriceSource`` or supplied

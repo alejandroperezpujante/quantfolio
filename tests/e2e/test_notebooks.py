@@ -1,4 +1,4 @@
-"""Committed notebooks execute offline and keep their reproducible presentation policy."""
+"""Committed notebooks execute offline with fixed dates and stored outputs."""
 
 from __future__ import annotations
 

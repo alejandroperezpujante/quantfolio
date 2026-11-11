@@ -9,11 +9,10 @@ on the units and scale of the variables.
 The Pearson correlation coefficient divides covariance by the product of the two standard deviations. The result has
 no units and lies between $-1$ and $+1$.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-Covariance and correlation quantify how asset returns move together. That relationship is the statistical basis for
-the diversification benefit of holding imperfectly correlated assets. In portfolio-risk calculations, the covariance
-matrix couples those assets.
+Use the covariance matrix to measure how returns move together. Treat correlation as a linear measure and re-estimate
+it over the window that matches the analysis, because correlations change over time.
 
 ## Facts and formulas
 

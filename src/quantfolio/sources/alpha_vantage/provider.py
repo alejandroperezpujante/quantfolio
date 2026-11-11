@@ -618,7 +618,7 @@ class AlphaVantageSource(PriceSource):
         self._persist_capabilities()
 
     def _downgrade(self) -> None:
-        """Switch to free capabilities and persist the downgrade exactly once."""
+        """Switch to free capabilities and persist them."""
         self._plan = AlphaVantagePlan.FREE
         self._indexes_enabled = False
         self._persist_capabilities()

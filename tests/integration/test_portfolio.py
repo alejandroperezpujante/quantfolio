@@ -298,7 +298,7 @@ def test_report_degrades_gracefully_with_one_return() -> None:
 def test_plotting_entry_points_render_without_leaving_ui_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public plot methods use the shared headless-capable rendering path."""
+    """The public plot methods create figures without an interactive backend."""
     monkeypatch.setattr(plt, "show", lambda: None)
     portfolio = _overlapping_portfolio()
     simulations = portfolio.simulate_monte_carlo(MonteCarloParameters(n_paths=2, horizon=3, seed=1))

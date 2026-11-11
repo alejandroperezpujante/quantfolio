@@ -28,11 +28,10 @@ The common standardized fields are timestamp, open, high, low, close, adjusted c
 restates the price for stock splits and dividends, so corporate actions do not distort calculated returns. **Close**
 is the raw, as-traded last price.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit converts the market data it consumes into one internal representation. Field names, adjustment
-conventions, symbol syntax and access limits differ between providers, so a common object keeps the analysis layer
-independent of any one API.
+Convert every provider response into `PriceSeries` before analysis. Check field names, adjustment conventions,
+symbol syntax and access limits, because each provider differs and mixing conventions changes the result.
 
 ## Facts and formulas
 

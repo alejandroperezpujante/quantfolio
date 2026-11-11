@@ -120,10 +120,9 @@ def _ensure_retention_covers_start(
 class KrakenSource(PriceSource):
     """Historical daily close prices from Kraken's keyless OHLC API.
 
-    This provider complements Yahoo Finance and demonstrates that different market-data
-    APIs produce identical internal objects. Kraken only keeps the most recent candles of
-    each interval (about two years of daily data), so a ``start`` beyond that retention
-    window raises a clear error instead of returning a silently truncated series.
+    Kraken only keeps the most recent candles of each interval (about two years of daily
+    data), so a ``start`` beyond that retention window raises a clear error instead of
+    returning a silently truncated series.
     """
 
     @property

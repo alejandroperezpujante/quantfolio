@@ -13,11 +13,10 @@ The **arithmetic average return** is the simple mean of period returns. The **ge
 the growth factors and equals the compound annual growth rate (CAGR) when periods are annual. The geometric mean is
 usually below the arithmetic mean, and the gap widens as return volatility rises.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit works with price series, and returns are the standard transformation for comparing assets and feeding
-statistical measures. The choice between simple and log returns determines which aggregation and averaging
-properties hold.
+Compute simple returns for portfolio aggregation and log returns for time aggregation. State the annualization
+convention, because 252 and 365 periods per year produce different annual figures.
 
 ## Facts and formulas
 

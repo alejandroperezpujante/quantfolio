@@ -1,7 +1,7 @@
 # Stock market indices: S&P 500, IBEX 35 and EURO STOXX 50
 
 An equity market index combines the prices of a defined group of shares into one value. Investors use that value as
-a benchmark for a market or a segment of it. The assignment refers to three indices.
+a benchmark for a market or a segment of it.
 
 The **S&P 500** is administered by S&P Dow Jones Indices, a division of S&P Global. It covers the large-cap segment
 of the U.S. equity market and contains 500 companies. Its weights are based on float-adjusted market capitalization.
@@ -19,11 +19,10 @@ The index is denominated in euros and is disseminated in real time from 09:00 to
 An index level is not directly investable. Investors gain exposure through index funds, exchange-traded funds (ETFs)
 and derivatives that track the index.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit ingests index and equity series as comparable price data. Indices provide the benchmarks for judging
-individual stocks and portfolios. An index's provider, weighting scheme and currency all affect the values in its
-series.
+Read index series as benchmarks for individual stocks and portfolios. Check the provider, weighting scheme and
+currency before comparing an index with another series or with a portfolio.
 
 ## Facts and formulas
 
@@ -45,8 +44,7 @@ series.
 
 ## Sources
 
-- <https://www.spglobal.com/spdji/en/methodology/article/sp-us-indices-methodology/> (accessed 2026-10-01; this official
-  S&P DJI page returned HTTP 403 to automated retrieval at access time)
+- <https://www.spglobal.com/spdji/en/methodology/article/sp-us-indices-methodology/> (accessed 2026-10-01)
 - <https://www.bolsasymercados.es/en/bme-exchange/faqs/what-is-ibex35.html> (accessed 2026-10-01)
 - <https://www.bolsasymercados.es/dam/descargas/indices/regulacion/technical-regulations-calculation-ibex-indices-en.pdf>
   (accessed 2026-10-01)

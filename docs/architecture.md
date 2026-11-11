@@ -1,7 +1,7 @@
 # Arquitectura de Quantfolio
 
-Este documento reúne la estructura de clases, las dependencias entre módulos y el flujo de datos de Quantfolio. Los
-diagramas usan Mermaid, un formato UML equivalente que GitHub puede representar. También pueden editarse en
+Los diagramas siguientes describen la estructura de clases, las dependencias entre módulos y el flujo de datos de
+Quantfolio. Usan Mermaid, un formato UML equivalente que GitHub puede representar. Edítalos en
 [FossFLOW](https://github.com/ai-8/fossflow), en [mermaid.live](https://mermaid.live) o en cualquier editor compatible
 con Mermaid.
 
@@ -253,13 +253,12 @@ flowchart LR
     MC --> RP
 ```
 
-En el flujo habitual, los cuadernos crean los proveedores y descargan las series, en lotes con `get_many()` y con
-caché opcional. Cada proveedor normaliza la respuesta en `PriceSeries`, que limpia los datos y calcula sus
-estadísticos al construirse. Con varias series se crea un `Portfolio`, que valida y normaliza los pesos y alinea los
-calendarios.
+En el flujo habitual, crea los proveedores y descarga las series en lotes con `get_many()` y caché opcional. Cada
+proveedor normaliza la respuesta en `PriceSeries`, que limpia los datos y calcula sus estadísticos al construirse.
+Con varias series, crea un `Portfolio`, que valida y normaliza los pesos y alinea los calendarios.
 
-Si se declara una divisa de reporte, `currency.py` selecciona tipos históricos directos, inversos o cruzados por EUR
-y registra cada tramo. `Portfolio` aplica esos factores a los precios antes del análisis. Después calcula las
+Declara una divisa de reporte para que `currency.py` seleccione tipos históricos directos, inversos o cruzados por
+EUR y registre cada tramo. `Portfolio` aplica esos factores a los precios antes del análisis. Después calcula las
 métricas, genera el informe y los gráficos con `reporting.py`, y lanza la simulación Monte Carlo de `simulation.py`;
 los resultados simulados también se visualizan.
 

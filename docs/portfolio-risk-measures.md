@@ -15,10 +15,10 @@ threshold. The Basel Committee's revised market-risk framework uses expected-sho
 models approach. **Maximum drawdown** is the largest peak-to-trough decline before the portfolio reaches a new peak.
 **Beta** measures systematic, or market, risk: the sensitivity of an asset's returns to market returns.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-These diagnostics answer different questions. VaR gives a loss threshold, ES gives the average tail loss, maximum
-drawdown gives the worst historical peak-to-trough loss, and beta gives sensitivity to the market.
+Report VaR with its confidence level and horizon, and pair it with expected shortfall to describe the tail. Use
+maximum drawdown for historical path risk and beta for market sensitivity.
 
 ## Facts and formulas
 

@@ -1,17 +1,15 @@
 # Documentation
 
-Reference material for the **B1-T1, Toolkit de Extracción, Análisis Bursátil y Gestión de Carteras** assignment.
-Most pages explain financial concepts, standard formulas and cited facts. The architecture page describes the
-package design, and the inflation-adjusted portfolio page documents a toolkit-specific calculation.
+Reference material for the **B1-T1, Toolkit de Extracción, Análisis Bursátil y Gestión de Carteras** assignment:
+financial concepts, standard formulas and cited facts, package architecture and the inflation-adjusted portfolio
+calculation.
 
 - Assignment text (extracted): [assignment/Taller_B1_T1.md](assignment/Taller_B1_T1.md)
 - Package architecture: [architecture.md](architecture.md), with UML class and data-flow diagrams.
-- Test-suite migration evidence: [testing/legacy-suite-crosswalk.md](testing/legacy-suite-crosswalk.md), with the
-  ownership and disposition of every legacy test function.
-- All sources were accessed on **2026-10-01**.
-- Preferred sources are central banks, BIS, IMF, World Bank, OECD, Eurostat, regulators, official index providers,
-  exchanges and university or established references. Investopedia and Wikipedia appear only as supporting
-  references.
+
+Cite central banks, BIS, IMF, World Bank, OECD, Eurostat, regulators, official index providers, exchanges and
+university or established references as primary sources. Use Investopedia and Wikipedia only as supporting
+references. Record the access date for every source: **2026-10-01**.
 
 ## Index
 
@@ -32,11 +30,3 @@ package design, and the inflation-adjusted portfolio page documents a toolkit-sp
 | [macroeconomic-indicators.md](macroeconomic-indicators.md)                         | GDP, inflation (CPI/HICP/PCE), interest rates and yield curves, unemployment, release calendars.        | 13      |
 | [inflation-adjusted-portfolio.md](inflation-adjusted-portfolio.md)                 | Cálculo mensual de rentabilidad real, informe comparado y simulación con inflación fija.                | n/a     |
 | [financial-statement-fundamentals.md](financial-statement-fundamentals.md)         | Balance sheet, income statement, cash flow, accounting identity, filings and common ratios.             | 6       |
-
-## Notes on sourcing
-
-- Some official pages (S&P Dow Jones Indices methodology, IMF World Economic Outlook and OECD indicator pages)
-  returned HTTP 403 during automated retrieval. The affected documents say so instead of filling the gap with
-  unsupported facts.
-- Documents built mainly from university or general references, such as `modern-portfolio-theory.md` and
-  `monte-carlo-simulation-in-finance.md`, cite fewer primary sources.

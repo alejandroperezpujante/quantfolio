@@ -1,4 +1,4 @@
-"""Reusable builders, fakes and execution helpers for the behaviour-first suite."""
+"""Reusable builders, fakes and execution helpers for the test suite."""
 
 from tests.support.builders import TRADING_DATES, make_macro_series, make_prices, make_series
 

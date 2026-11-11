@@ -209,7 +209,7 @@ def test_cache_reuses_recent_files_for_open_ended_requests(tmp_path: Path) -> No
 
 
 def test_cache_discards_corrupt_empty_and_untrusted_legacy_files(tmp_path: Path) -> None:
-    """Malformed files and sanitized legacy names fall back to a trusted fresh download."""
+    """Malformed files and sanitized names without ticker metadata are downloaded again."""
     stub_dir = tmp_path / "stub"
     stub_dir.mkdir()
     (stub_dir / "AAA.csv").write_text("not,a,price,file\n", encoding="utf-8")

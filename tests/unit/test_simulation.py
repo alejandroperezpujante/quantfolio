@@ -82,7 +82,7 @@ def test_simulated_log_growth_reproduces_the_estimated_drift() -> None:
 
 
 def test_invalid_simulation_parameters_are_rejected() -> None:
-    """Each out-of-range dimension has an actionable Spanish error."""
+    """Each out-of-range dimension raises a Spanish error that names the parameter."""
     cases = (
         (0.0, 0.1, MonteCarloParameters(), "valor inicial"),
         (100.0, -0.1, MonteCarloParameters(), "volatilidad"),
