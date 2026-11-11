@@ -17,11 +17,11 @@ proportionate ownership and the total market value unchanged (a reverse split do
 Return measures differ accordingly. **Price return** reflects only the change in price, whereas **total return** also
 includes dividends (assumed to be reinvested). An index or portfolio may be quoted on either basis.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit models equities and portfolios and reports their statistics. Ownership terms, market capitalization and
-the distinction between dividends and splits determine how an instrument is identified and how its returns should be
-read.
+Identify each instrument by ticker, and use its ISIN when you need a venue-independent identifier. Check its
+currency denomination before comparing prices. Read returns on the same basis, price or total, because dividend
+treatment changes the result.
 
 ## Facts and formulas
 
@@ -42,5 +42,4 @@ read.
 - <https://www.bolsasymercados.es/en/bme-exchange/prices-and-markets/shares/corporate-actions.html> (accessed
   2026-10-01)
 - <https://anna-web.org/> (accessed 2026-10-01)
-- <https://www.spglobal.com/spdji/en/methodology/article/index-mathematics-methodology/> (accessed 2026-10-01; this
-  official S&P DJI page returned HTTP 403 to automated retrieval at access time)
+- <https://www.spglobal.com/spdji/en/methodology/article/index-mathematics-methodology/> (accessed 2026-10-01)

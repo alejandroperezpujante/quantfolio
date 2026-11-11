@@ -107,7 +107,7 @@ def test_real_returns_use_reporting_currency_prices_before_inflation() -> None:
 
 
 def test_real_returns_require_a_reporting_currency() -> None:
-    """Purchasing-power analysis has no meaning without a currency context."""
+    """Purchasing-power analysis raises when the portfolio has no reporting currency."""
     portfolio = _portfolio(reporting_currency=None)
     cpi = _index([100.0, 101.0, 102.0, 103.0])
     with pytest.raises(ValueError, match="divisa de reporte"):

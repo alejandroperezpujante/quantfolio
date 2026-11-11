@@ -17,10 +17,10 @@ or GARCH models describe it. **Implied volatility** comes from option prices and
 The Cboe Volatility Index (VIX) measures the market's expectation of 30-day volatility implied by S&P 500 index
 options.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit uses volatility to summarize the dispersion of a price series and to set assumptions about risk. Realized
-and implied volatility are the two reference quantities when a model needs a rate of fluctuation.
+Annualize the standard deviation of returns with the same period count as the return series. Use realized volatility
+for historical estimates and implied volatility only when option prices are available.
 
 ## Facts and formulas
 

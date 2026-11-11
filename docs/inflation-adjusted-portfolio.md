@@ -1,8 +1,8 @@
 # Análisis de la cartera en poder adquisitivo
 
 La vista real es opcional. La cartera conserva sus métricas nominales y, cuando recibe un índice de precios, añade
-una comparación mensual en la divisa de reporte. El usuario debe elegir un índice adecuado para esa divisa. Quantfolio
-no lo descarga automáticamente ni supone que el IPC de otra economía sirva como equivalente.
+una comparación mensual en la divisa de reporte. Elige un índice adecuado para esa divisa: Quantfolio no lo descarga
+automáticamente ni supone que el IPC de otra economía sirva como equivalente.
 
 ## Índice de precios y fórmula
 
@@ -12,8 +12,8 @@ variación porcentual. También se rechaza un índice con meses duplicados o con
 Las fechas originales del IPC se interpretan como meses de referencia y la salida se etiqueta con el último día de
 cada mes.
 
-La cartera calcula primero la rentabilidad de cada activo en la divisa de reporte y la pondera. Después compone los
-rendimientos diarios de la cartera dentro de cada mes y aplica:
+Calcula primero la rentabilidad de cada activo en la divisa de reporte y pondérala. Después compón los rendimientos
+diarios de la cartera dentro de cada mes y aplica:
 
 $$
 R^{\mathrm{real}}_t = \frac{1 + R^{\mathrm{nominal}}_t}{I_t / I_{t-1}} - 1,
@@ -38,9 +38,9 @@ revisiones y no representa necesariamente la información disponible en cada fec
 el tiempo, `FredMacroSource.get_series(..., as_of=...)` permite solicitar un vintage concreto; su fecha limita los
 meses que existían en esa publicación.
 
-La convención de precios de cada proveedor también importa. Yahoo usa el cierre ajustado por dividendos y
-desdoblamientos (`auto_adjust=True`). Alpha Vantage puede entregar cierre bruto en el plan gratuito y ajustado en el
-premium. Kraken aporta cierres de velas sin flujos de caja. La deflactación transforma la rentabilidad que ya
+Comprueba la convención de precios de cada proveedor antes de deflactar. Yahoo usa el cierre ajustado por dividendos
+y desdoblamientos (`auto_adjust=True`). Alpha Vantage puede entregar cierre bruto en el plan gratuito y ajustado en
+el premium. Kraken aporta cierres de velas sin flujos de caja. La deflactación transforma la rentabilidad que ya
 proporciona cada fuente y no añade dividendos o cupones ausentes.
 
 ## Escenario de Monte Carlo

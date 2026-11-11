@@ -377,7 +377,7 @@ def test_configured_symbols_currency_override_and_subunits_preserve_caller_ident
     assert asset.prices.iloc[0] == pytest.approx(1.05)
 
 
-def test_unknown_currency_is_legacy_valid_and_exhausted_sources_are_actionable() -> None:
+def test_unknown_currency_stays_local_and_failures_explain_provider_attempts() -> None:
     """A no-metadata portfolio remains usable, while failures explain provider attempts."""
     unknown = _source("Yahoo", currency=None)
     config = AutoPortfolioConfig(
@@ -521,7 +521,7 @@ def test_currency_and_unit_overrides_must_correspond_and_match_provider_metadata
 def test_cache_refreshes_missing_provider_metadata_once_and_then_reuses_it(
     tmp_path: Path,
 ) -> None:
-    """The AutoPortfolio cache refresh repairs legacy metadata without repeated fetches."""
+    """A cached entry without provider metadata is refreshed once and then reused."""
     ticker = "AAA"
     dates = pd.bdate_range("2024-12-26", periods=12)
     no_metadata = PriceSeries(

@@ -378,7 +378,7 @@ class _CheckedPriceSource(PriceSource):
 
     @property
     def cache_namespace(self) -> str:
-        """Delegate cache identity to the wrapped provider's current semantics."""
+        """Return the wrapped provider's cache namespace."""
         return self._source.cache_namespace
 
     def get_prices(self, ticker: str, start: DateLike, end: DateLike | None = None) -> PriceSeries:

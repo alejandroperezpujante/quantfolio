@@ -11,10 +11,11 @@ The drift sets the deterministic trend, while volatility produces the unpredicta
 The log of the price is normally distributed, so the price $S_t$ is log-normal and remains strictly positive. The
 model has closed-form results, but its simplifying assumptions differ from observed markets.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-GBM connects a drift and a volatility assumption to a distribution of future prices. The toolkit uses it to generate
-simulated price paths and to show how those paths respond when the drift or volatility changes.
+Set the drift and volatility assumptions explicitly before simulating. Treat GBM as a simplification: it rules out
+jumps and stochastic volatility, so use the simulated distribution to compare scenarios rather than to forecast
+prices.
 
 ## Facts and formulas
 

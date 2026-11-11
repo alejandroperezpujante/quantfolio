@@ -1,8 +1,7 @@
 """Pure risk and performance measures computed from return series.
 
 Every function in this module is a pure transformation of a return series: it does not fetch
-data, mutate its input or depend on the portfolio model, which keeps the measures reusable by
-the portfolio report, the notebooks and any future backtest.
+data, mutate its input or depend on the portfolio model.
 """
 
 import math

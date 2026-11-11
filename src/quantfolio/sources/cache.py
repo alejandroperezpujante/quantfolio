@@ -96,7 +96,7 @@ class CachedPriceSource(PriceSource):
         return asset
 
     def _cache_path(self, symbol: str) -> Path:
-        """Return the current path selected by the provider's semantic namespace."""
+        """Return the cache path for the provider's namespace."""
         return self._cache_dir / _slug(self._source.cache_namespace) / f"{_cache_stem(symbol)}.csv"
 
     def _read_cache(

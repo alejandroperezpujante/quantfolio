@@ -51,7 +51,7 @@ src = ["src", "tests"]
 select = ["ALL"]
 ignore = [
     "COM812", # conflicts with the Ruff formatter (trailing commas)
-    "CPY001", # no copyright notice required for this coursework project
+    "CPY001", # the project does not require a copyright notice
     "D203",   # incompatible with D211: prefer no blank line before a class docstring
     "D213",   # incompatible with D212: prefer the summary on the first line
     "ISC001", # conflicts with the Ruff formatter (implicit string concatenation)
@@ -74,9 +74,9 @@ known-first-party = ["quantfolio"]
 "src/quantfolio/sources/ecb.py" = ["S310"]
 # The provider imports capabilities; this lazy import keeps the graph acyclic.
 "src/quantfolio/sources/alpha_vantage/capabilities.py" = ["PLC0415"]
-# The report preserves its existing keyword options and adds an optional CPI input.
+# Portfolio.report keeps its keyword options explicit in the public signature.
 "src/quantfolio/portfolio.py" = ["PLR0913"]
-# The report renderer mirrors the public Portfolio.report signature.
+# The report renderer uses the same keyword options as Portfolio.report.
 "src/quantfolio/reporting.py" = ["PLR0913"]
 
 [tool.ruff.format]

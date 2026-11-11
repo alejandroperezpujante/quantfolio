@@ -3,13 +3,13 @@
 A portfolio's return and risk combine the properties of its individual assets. Expected portfolio return is the
 weighted average of the assets' expected returns. The weights are the fractions of wealth invested and sum to one.
 Portfolio risk, measured by the variance or standard deviation of return, also depends on the covariance between
-every pair of assets. It is not simply the weighted average of the asset variances. These relationships form the
+every pair of assets. It is not the weighted average of the asset variances. These relationships form the
 algebra of mean-variance portfolio analysis.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-A multi-asset toolkit reports and summarizes expected portfolio return and risk. The covariance matrix couples the
-individual assets, and the formulas below give the standard definitions.
+Compute portfolio variance from the weighted covariance matrix, not from the weighted average of asset variances.
+Keep the covariance terms: they carry the diversification effect.
 
 ## Facts and formulas
 

@@ -15,10 +15,10 @@ Form **10-K** and the quarterly report is Form **10-Q**, both filed through the 
 more than 140 jurisdictions use IFRS Standards, with local rules setting the reporting forms. Investors derive
 **valuation and profitability ratios** from these statements.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-Company fundamentals are a common non-price data type for the assignment. They arrive on an annual or quarterly
-calendar rather than continuously, and the statements explain what a fundamentals series represents.
+Compare ratios within the same industry and over the same reporting period. Treat quarterly figures as unaudited and
+check for restatements before using a series.
 
 ## Facts and formulas
 

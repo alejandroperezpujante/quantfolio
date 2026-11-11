@@ -8,8 +8,7 @@ This repository hosts **Quantfolio**, the implementation of the B1-T1 assignment
 multi-source market-data ingestion, price-series analysis and portfolio management with Monte
 Carlo simulation). The assignment text lives in `docs/assignment/`.
 
-The research-only constraint from the original scaffold has been retired by team decision: the
-repository now contains the toolkit implementation, its tests and its documentation.
+The repository contains the toolkit implementation, its tests and its documentation.
 
 ## Layout rules
 
@@ -96,7 +95,7 @@ request revision.
 
 ## Conventions
 
-- Docstrings and code comments are written in **English** (Google style, as in the scaffold).
+- Docstrings and code comments are written in **English** (Google style).
 - User-facing text is written in **Spanish**: exception messages, Markdown reports, plot labels
   and `print` output in notebooks.
 - Public API is re-exported from `src/quantfolio/__init__.py`; keep `__all__` isort-sorted — constants

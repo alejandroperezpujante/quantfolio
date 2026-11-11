@@ -13,11 +13,10 @@ They also simulate future portfolio values and estimate risk measures such as Va
 simulated profit-and-loss distribution. Results depend on the assumed parameters, the number of paths and the time
 horizon. A longer horizon gives the assumptions more time to compound.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-Monte Carlo simulation turns return and volatility assumptions into a distribution of possible future prices or
-portfolio values. The number of paths controls the precision of that distribution, and the horizon controls its
-scope.
+Choose the number of paths for precision and the horizon for scope. Fix a seed to reproduce a run, and report the
+assumptions alongside the distribution.
 
 ## Facts and formulas
 

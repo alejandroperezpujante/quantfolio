@@ -8,11 +8,11 @@ In MPT, an asset is judged by how it contributes to the risk and return of the w
 dimensions: expected return and variance, the square of the standard deviation, which is the risk measure.
 Because asset returns are correlated, adding more securities cannot remove all risk.
 
-## Why it matters for the B1-T1 toolkit
+## Use in Quantfolio
 
-The toolkit works with multiple assets, portfolio weights and risk statistics, and these use the mean-variance
-vocabulary Markowitz established. The theory defines expected return, variance, covariance and diversification in a
-portfolio context.
+Read weights as fractions of wealth and compute portfolio variance from the full covariance matrix. Treat the
+efficient frontier as a theoretical reference: the toolkit evaluates the weights it receives and does not optimize
+them. Check the stability of the estimated inputs before relying on the result.
 
 ## Facts and formulas
 
