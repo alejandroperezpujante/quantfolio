@@ -66,6 +66,11 @@ green. Required repository secrets/variables: `TS_OAUTH_CLIENT_ID` and `TS_OAUTH
 client), `SONAR_TOKEN` (secret) and `SONAR_HOST_URL` (variable); the three secrets must also exist as Dependabot
 secrets so its pull requests can run the analysis. Keep those names in sync if the workflows change.
 
+The Codex GitHub App (`chatgpt-codex-connector`) also reviews pull requests and posts a comment with any findings.
+It reviews when a pull request opens or becomes ready and when a comment mentions `@codex review`. The review is
+advisory: it is not a required status check and does not block merging. Its configuration is in the App, outside
+this repository.
+
 ## The `main` branch is protected
 
 Direct pushes to `main` are rejected for everyone, administrators included: every change reaches the branch
